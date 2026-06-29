@@ -142,7 +142,7 @@ export class StockTreeProvider implements vscode.TreeDataProvider<KanpanTreeItem
             contextValue: 'stockGroup',
             iconId: 'graph',
             description: source,
-            tooltip: `当前数据源: ${source}\n在 Settings 中可切换数据源`,
+            tooltip: `当前数据源: ${source}\n悬停此行点击 + 添加美股`,
           }
         ),
         new KanpanTreeItem(
@@ -153,7 +153,7 @@ export class StockTreeProvider implements vscode.TreeDataProvider<KanpanTreeItem
             contextValue: 'aStockGroup',
             iconId: 'symbol-ruler',
             description: '新浪财经',
-            tooltip: 'A 股行情来自新浪财经，代码如 600519、000001',
+            tooltip: 'A 股行情来自新浪财经\n悬停此行点击 + 添加 A 股',
           }
         ),
       ];

@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
   "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股、A 股和加密货币实时价格",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -121,16 +121,6 @@
           "group": "navigation"
         },
         {
-          "command": "kanpan.addStock",
-          "when": "view == kanpanView.stock",
-          "group": "navigation"
-        },
-        {
-          "command": "kanpan.addAShare",
-          "when": "view == kanpanView.stock",
-          "group": "navigation"
-        },
-        {
           "command": "kanpan.addCrypto",
           "when": "view == kanpanView.crypto",
           "group": "navigation"
@@ -142,6 +132,16 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "kanpan.addStock",
+          "when": "view == kanpanView.stock && viewItem == stockGroup",
+          "group": "inline"
+        },
+        {
+          "command": "kanpan.addAShare",
+          "when": "view == kanpanView.stock && viewItem == aStockGroup",
+          "group": "inline"
+        },
         {
           "command": "kanpan.addToStatusBar",
           "when": "view == kanpanView.stock && viewItem == usStock",
