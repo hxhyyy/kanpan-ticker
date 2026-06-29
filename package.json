@@ -1,0 +1,124 @@
+{
+  "name": "kanpan-ticker",
+  "displayName": "看盘插件",
+  "description": "在 VS Code / Cursor 状态栏查看美股和比特币实时价格",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/local/kanpan-ticker"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "kanpan.refresh",
+        "title": "看盘插件: 立即刷新"
+      },
+      {
+        "command": "kanpan.show",
+        "title": "看盘插件: 显示"
+      },
+      {
+        "command": "kanpan.hide",
+        "title": "看盘插件: 隐藏"
+      },
+      {
+        "command": "kanpan.addStock",
+        "title": "看盘插件: 添加美股"
+      },
+      {
+        "command": "kanpan.addCrypto",
+        "title": "看盘插件: 添加加密货币"
+      }
+    ],
+    "configuration": {
+      "title": "看盘插件",
+      "properties": {
+        "kanpan.stocks": {
+          "type": "array",
+          "default": ["AAPL", "NVDA", "TSLA"],
+          "description": "要监控的美股代码（Finnhub）"
+        },
+        "kanpan.cryptoSymbols": {
+          "type": "array",
+          "default": ["BTCUSDT"],
+          "description": "Binance 交易对，如 BTCUSDT、ETHUSDT"
+        },
+        "kanpan.finnhubApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Finnhub API Key（美股必需，免费注册 https://finnhub.io）"
+        },
+        "kanpan.refreshInterval": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 5000,
+          "description": "刷新间隔（毫秒，最小 5000）"
+        },
+        "kanpan.riseColor": {
+          "type": "string",
+          "default": "#26a69a",
+          "description": "上涨颜色"
+        },
+        "kanpan.fallColor": {
+          "type": "string",
+          "default": "#ef5350",
+          "description": "下跌颜色"
+        },
+        "kanpan.showChangePercent": {
+          "type": "boolean",
+          "default": true,
+          "description": "显示涨跌幅"
+        },
+        "kanpan.monochrome": {
+          "type": "boolean",
+          "default": false,
+          "description": "隐身模式：隐藏涨跌颜色和箭头"
+        },
+        "kanpan.format": {
+          "type": "string",
+          "default": "{symbol} {price} {change} {icon}",
+          "description": "显示格式，可用占位符: {symbol} {price} {change} {icon}"
+        },
+        "kanpan.aliases": {
+          "type": "object",
+          "default": {},
+          "description": "别名映射，如 {\"BTCUSDT\": \"BTC\"}"
+        },
+        "kanpan.onlyRefreshWhenFocused": {
+          "type": "boolean",
+          "default": false,
+          "description": "仅在窗口聚焦时刷新（参考 vscode-crypto-ticker）"
+        },
+        "kanpan.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用状态栏显示"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
