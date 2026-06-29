@@ -377,7 +377,10 @@ class MarketService {
     }
     rebuildStatusItemsIfNeeded() {
         const statusKeys = getStatusBarItems(this.context);
-        if (statusKeys.join('|') !== this.statusItems.map((i) => i.key).join('|')) {
+        const position = getConfig().get('statusBarPosition', 'left');
+        const keysMatch = statusKeys.join('|') === this.statusItems.map((i) => i.key).join('|');
+        if (!keysMatch || this.lastStatusBarPosition !== position) {
+            this.lastStatusBarPosition = position;
             this.rebuildStatusItems();
         }
     }
@@ -393,8 +396,12 @@ class MarketService {
             this.statusItems.push(this.createStatusItem(parsed.type, parsed.symbol, priority--));
         }
     }
+    getStatusBarAlignment() {
+        const position = getConfig().get('statusBarPosition', 'left');
+        return position === 'right' ? vscode.StatusBarAlignment.Right : vscode.StatusBarAlignment.Left;
+    }
     createStatusItem(type, symbol, priority) {
-        const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, priority);
+        const statusBarItem = vscode.window.createStatusBarItem(this.getStatusBarAlignment(), priority);
         statusBarItem.command = 'kanpan.refresh';
         this.context.subscriptions.push(statusBarItem);
         return { key: marketKeyOf(type, symbol), type, symbol, statusBarItem };
