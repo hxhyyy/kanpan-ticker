@@ -69,6 +69,10 @@ export function defaultSymbolLabel(symbol: string): string {
   if (symbol.endsWith('USDT')) {
     return symbol.replace('USDT', '');
   }
+  const lower = symbol.toLowerCase();
+  if (/^(sh|sz|bj)\d{6}$/.test(lower)) {
+    return lower.slice(2);
+  }
   return symbol;
 }
 
@@ -105,13 +109,17 @@ export function formatVolume(value: number | undefined): string {
 }
 
 export function formatVolumeDetail(quote: QuoteData): string | undefined {
-  if (quote.quoteVolume && quote.quoteVolume > 0) {
-    return `额 ${formatVolume(quote.quoteVolume)}`;
+  if (quote.volume === undefined || quote.volume <= 0) {
+    return undefined;
   }
-  if (quote.volume && quote.volume > 0) {
-    return `量 ${formatVolume(quote.volume)}`;
+  if (quote.dataSource === '新浪财经') {
+    const wanShou = quote.volume / 10000;
+    if (wanShou >= 1) {
+      return `量: ${wanShou.toFixed(2)}万手`;
+    }
+    return `量: ${quote.volume.toFixed(0)}手`;
   }
-  return undefined;
+  return `量: ${formatVolume(quote.volume)}`;
 }
 
 export function renderFormat(

@@ -79,6 +79,10 @@ function defaultSymbolLabel(symbol) {
     if (symbol.endsWith('USDT')) {
         return symbol.replace('USDT', '');
     }
+    const lower = symbol.toLowerCase();
+    if (/^(sh|sz|bj)\d{6}$/.test(lower)) {
+        return lower.slice(2);
+    }
     return symbol;
 }
 function formatPrice(price) {
@@ -111,13 +115,17 @@ function formatVolume(value) {
     return value.toFixed(0);
 }
 function formatVolumeDetail(quote) {
-    if (quote.quoteVolume && quote.quoteVolume > 0) {
-        return `额 ${formatVolume(quote.quoteVolume)}`;
+    if (quote.volume === undefined || quote.volume <= 0) {
+        return undefined;
     }
-    if (quote.volume && quote.volume > 0) {
-        return `量 ${formatVolume(quote.volume)}`;
+    if (quote.dataSource === '新浪财经') {
+        const wanShou = quote.volume / 10000;
+        if (wanShou >= 1) {
+            return `量: ${wanShou.toFixed(2)}万手`;
+        }
+        return `量: ${quote.volume.toFixed(0)}手`;
     }
-    return undefined;
+    return `量: ${formatVolume(quote.volume)}`;
 }
 function renderFormat(template, symbol, price, changePercent, showIcon, volumeText) {
     const icon = showIcon ? (changePercent >= 0 ? '$(arrow-up)' : '$(arrow-down)') : '';

@@ -1,8 +1,8 @@
 {
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
-  "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股和比特币实时价格",
-  "version": "0.3.6",
+  "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股、A 股和加密货币实时价格",
+  "version": "0.4.0",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -68,6 +68,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "kanpan.addAShare",
+        "title": "看盘插件: 添加 A 股",
+        "icon": "$(add)"
+      },
+      {
         "command": "kanpan.addCrypto",
         "title": "看盘插件: 添加加密货币",
         "icon": "$(add)"
@@ -75,6 +80,11 @@
       {
         "command": "kanpan.removeStock",
         "title": "删除美股",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kanpan.removeAShare",
+        "title": "删除 A 股",
         "icon": "$(trash)"
       },
       {
@@ -116,6 +126,11 @@
           "group": "navigation"
         },
         {
+          "command": "kanpan.addAShare",
+          "when": "view == kanpanView.stock",
+          "group": "navigation"
+        },
+        {
           "command": "kanpan.addCrypto",
           "when": "view == kanpanView.crypto",
           "group": "navigation"
@@ -136,6 +151,21 @@
           "command": "kanpan.removeFromStatusBar",
           "when": "view == kanpanView.stock && viewItem == usStockPinned",
           "group": "status@1"
+        },
+        {
+          "command": "kanpan.addToStatusBar",
+          "when": "view == kanpanView.stock && viewItem == aStock",
+          "group": "status@1"
+        },
+        {
+          "command": "kanpan.removeFromStatusBar",
+          "when": "view == kanpanView.stock && viewItem == aStockPinned",
+          "group": "status@1"
+        },
+        {
+          "command": "kanpan.removeAShare",
+          "when": "view == kanpanView.stock && (viewItem == aStock || viewItem == aStockPinned)",
+          "group": "inline"
         },
         {
           "command": "kanpan.addToStatusBar",
@@ -167,6 +197,11 @@
           "default": ["AAPL", "NVDA", "TSLA"],
           "description": "要监控的美股代码"
         },
+        "kanpan.aShares": {
+          "type": "array",
+          "default": ["sh600519", "sz300750"],
+          "description": "要监控的 A 股代码，如 sh600519、sz300750，也可只写 600519"
+        },
         "kanpan.stockDataSource": {
           "type": "string",
           "enum": ["auto", "eastmoney", "sina", "tencent", "finnhubExtended", "finnhub"],
@@ -194,7 +229,7 @@
         "kanpan.statusBarItems": {
           "type": "array",
           "default": [],
-          "description": "显示在底部状态栏的标的，格式 stock:AAPL 或 crypto:BTCUSDT"
+          "description": "显示在底部状态栏的标的，格式 stock:AAPL、ashare:sh600519 或 crypto:BTCUSDT"
         },
         "kanpan.finnhubApiKey": {
           "type": "string",
@@ -205,7 +240,7 @@
           "type": "number",
           "default": 2000,
           "minimum": 1000,
-          "description": "美股刷新间隔（毫秒，默认 2000 即每 2 秒）"
+          "description": "美股和 A 股刷新间隔（毫秒，默认 2000 即每 2 秒）"
         },
         "kanpan.cryptoRefreshInterval": {
           "type": "number",
@@ -241,7 +276,7 @@
         "kanpan.showVolume": {
           "type": "boolean",
           "default": true,
-          "description": "在侧边栏和状态栏显示成交量/成交额"
+          "description": "在侧边栏和状态栏显示成交量（量:）"
         },
         "kanpan.aliases": {
           "type": "object",

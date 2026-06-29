@@ -15,9 +15,10 @@ import {
   StockDataSourceId,
   STOCK_SOURCE_OPTIONS,
 } from './stockSources';
+import { fetchAShareQuote, normalizeAShareCode } from './aShareSources';
 import { sessionLabel } from './session';
 
-export type MarketType = 'stock' | 'crypto';
+export type MarketType = 'stock' | 'crypto' | 'ashare';
 
 export interface MarketKey {
   type: MarketType;
@@ -25,12 +26,20 @@ export interface MarketKey {
 }
 
 export function marketKeyOf(type: MarketType, symbol: string): string {
+  if (type === 'ashare') {
+    return `${type}:${normalizeAShareCode(symbol)}`;
+  }
   return `${type}:${symbol.toUpperCase()}`;
 }
 
 export function parseMarketKey(key: string): MarketKey {
-  const [type, symbol] = key.split(':');
-  return { type: type as MarketType, symbol };
+  const colon = key.indexOf(':');
+  const type = key.slice(0, colon) as MarketType;
+  const symbol = key.slice(colon + 1);
+  return {
+    type,
+    symbol: type === 'ashare' ? symbol.toLowerCase() : symbol.toUpperCase(),
+  };
 }
 
 interface CachedEntry {
@@ -54,7 +63,12 @@ export function getStatusBarItems(context: vscode.ExtensionContext): string[] {
     if (colon < 0) {
       return k;
     }
-    return `${k.slice(0, colon)}:${k.slice(colon + 1).toUpperCase()}`;
+    const type = k.slice(0, colon);
+    const symbol = k.slice(colon + 1);
+    if (type === 'ashare') {
+      return `${type}:${symbol.toLowerCase()}`;
+    }
+    return `${type}:${symbol.toUpperCase()}`;
   });
 }
 
@@ -63,7 +77,15 @@ export async function setStatusBarItems(
   items: string[]
 ): Promise<void> {
   const normalized = items.map((k) => {
-    const [type, symbol] = k.split(':');
+    const colon = k.indexOf(':');
+    if (colon < 0) {
+      return k;
+    }
+    const type = k.slice(0, colon);
+    const symbol = k.slice(colon + 1);
+    if (type === 'ashare') {
+      return `${type}:${normalizeAShareCode(symbol)}`;
+    }
     return `${type}:${symbol.toUpperCase()}`;
   });
   await context.globalState.update(STATUS_BAR_ITEMS_STATE_KEY, normalized);
@@ -98,7 +120,10 @@ export async function setStockDataSource(
   }
 }
 
-export function getDisplayLabel(symbol: string): string {
+export function getDisplayLabel(symbol: string, name?: string): string {
+  if (name) {
+    return name;
+  }
   const aliases = getConfig().get<Record<string, string>>('aliases', {});
   return aliases[symbol] ?? defaultSymbolLabel(symbol);
 }
@@ -177,7 +202,12 @@ export class MarketService {
     this.rebuildStatusItemsIfNeeded();
 
     const stocks = config.get<string[]>('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => s.toUpperCase());
-    await Promise.all(stocks.map((symbol) => this.fetchAndCache('stock', symbol)));
+    const aShares = config.get<string[]>('aShares', ['sh600519', 'sz300750']).map((s) => normalizeAShareCode(s));
+
+    await Promise.all([
+      ...stocks.map((symbol) => this.fetchAndCache('stock', symbol)),
+      ...aShares.map((symbol) => this.fetchAndCache('ashare', symbol)),
+    ]);
     this.store.notify();
     this.updateStatusBar(config);
   }
@@ -260,6 +290,39 @@ export class MarketService {
     void this.refresh();
   }
 
+  async addAShare(): Promise<void> {
+    const symbol = await vscode.window.showInputBox({
+      prompt: '输入 A 股代码，如 600519、000001、300750',
+      placeHolder: '600519',
+      validateInput: (value) => {
+        if (!value.trim()) {
+          return '代码不能为空';
+        }
+        try {
+          normalizeAShareCode(value.trim());
+          return undefined;
+        } catch (error) {
+          return error instanceof Error ? error.message : '请输入有效的 A 股代码';
+        }
+      },
+    });
+    if (!symbol) {
+      return;
+    }
+
+    const code = normalizeAShareCode(symbol.trim());
+    const aShares = getConfig().get<string[]>('aShares', []);
+    if (aShares.map((s) => normalizeAShareCode(s)).includes(code)) {
+      vscode.window.showInformationMessage(`${code} 已在列表中`);
+      return;
+    }
+
+    await getConfig().update('aShares', [...aShares, code], vscode.ConfigurationTarget.Global);
+    vscode.window.showInformationMessage(`已添加 A 股 ${code}`);
+    this.start();
+    void this.refresh();
+  }
+
   async removeStock(symbol: string): Promise<void> {
     const key = marketKeyOf('stock', symbol);
     const stocks = getConfig().get<string[]>('stocks', []);
@@ -282,6 +345,23 @@ export class MarketService {
     await getConfig().update(
       'cryptoSymbols',
       symbols.filter((s) => s.toUpperCase() !== symbol.toUpperCase()),
+      vscode.ConfigurationTarget.Global
+    );
+    await setStatusBarItems(
+      this.context,
+      getStatusBarItems(this.context).filter((item) => item !== key)
+    );
+    this.start();
+    void this.refresh();
+  }
+
+  async removeAShare(symbol: string): Promise<void> {
+    const code = normalizeAShareCode(symbol);
+    const key = marketKeyOf('ashare', code);
+    const aShares = getConfig().get<string[]>('aShares', []);
+    await getConfig().update(
+      'aShares',
+      aShares.filter((s) => normalizeAShareCode(s) !== code),
       vscode.ConfigurationTarget.Global
     );
     await setStatusBarItems(
@@ -321,10 +401,15 @@ export class MarketService {
   }
 
   async addToStatusBar(key: string): Promise<void> {
-    const normalized = key.includes(':') ? key : '';
-    if (!normalized || (!normalized.startsWith('stock:') && !normalized.startsWith('crypto:'))) {
+    const colon = key.indexOf(':');
+    if (colon < 0) {
       return;
     }
+    const type = key.slice(0, colon);
+    if (type !== 'stock' && type !== 'crypto' && type !== 'ashare') {
+      return;
+    }
+    const normalized = marketKeyOf(type as MarketType, key.slice(colon + 1));
 
     const items = getStatusBarItems(this.context);
     if (items.includes(normalized)) {
@@ -364,6 +449,7 @@ export class MarketService {
     const config = getConfig();
     const defaults = [
       ...config.get<string[]>('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => marketKeyOf('stock', s)),
+      ...config.get<string[]>('aShares', ['sh600519', 'sz300750']).map((s) => marketKeyOf('ashare', s)),
       ...config.get<string[]>('cryptoSymbols', ['BTCUSDT']).map((s) => marketKeyOf('crypto', s)),
     ];
     if (defaults.length > 0) {
@@ -388,7 +474,9 @@ export class MarketService {
                 'finnhub',
               ])
             )
-          : await fetchCryptoQuote(symbol);
+          : type === 'ashare'
+            ? await fetchAShareQuote(symbol)
+            : await fetchCryptoQuote(symbol);
       this.store.setQuote(key, quote);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -413,7 +501,7 @@ export class MarketService {
 
     for (const item of this.statusItems) {
       const cached = this.store.get(item.key);
-      const label = getDisplayLabel(item.symbol);
+      const label = getDisplayLabel(item.symbol, cached?.quote?.name);
 
       if (cached?.error) {
         item.statusBarItem.text = `$(warning) ${label}`;

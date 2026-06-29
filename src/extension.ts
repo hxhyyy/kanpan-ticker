@@ -23,16 +23,27 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('kanpan.show', () => marketService.setStatusVisible(true)),
     vscode.commands.registerCommand('kanpan.hide', () => marketService.setStatusVisible(false)),
     vscode.commands.registerCommand('kanpan.addStock', () => marketService.addStock()),
+    vscode.commands.registerCommand('kanpan.addAShare', async () => {
+      await marketService.addAShare();
+      stockProvider.refresh();
+    }),
     vscode.commands.registerCommand('kanpan.addCrypto', () => marketService.addCrypto()),
     vscode.commands.registerCommand('kanpan.removeStock', async (item?: { nodeId?: string }) => {
-      const symbol = item?.nodeId?.split(':')[1];
+      const symbol = item?.nodeId?.slice(item.nodeId.indexOf(':') + 1);
       if (symbol) {
         await marketService.removeStock(symbol);
         stockProvider.refresh();
       }
     }),
+    vscode.commands.registerCommand('kanpan.removeAShare', async (item?: { nodeId?: string }) => {
+      const symbol = item?.nodeId?.slice(item.nodeId.indexOf(':') + 1);
+      if (symbol) {
+        await marketService.removeAShare(symbol);
+        stockProvider.refresh();
+      }
+    }),
     vscode.commands.registerCommand('kanpan.removeCrypto', async (item?: { nodeId?: string }) => {
-      const symbol = item?.nodeId?.split(':')[1];
+      const symbol = item?.nodeId?.slice(item.nodeId.indexOf(':') + 1);
       if (symbol) {
         await marketService.removeCrypto(symbol);
         cryptoProvider.refresh();

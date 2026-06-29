@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { formatChangePercent, formatPrice, formatVolumeDetail } from '../providers';
-import { getDisplayLabel, getConfig, getStockDataSource, getStatusBarItems, MarketStore, marketKeyOf } from '../marketService';
+import { normalizeAShareCode } from '../aShareSources';
+import { getDisplayLabel, getConfig, getStockDataSource, getStatusBarItems, MarketStore, marketKeyOf, MarketType } from '../marketService';
 import { sessionLabel } from '../session';
 import { formatQuoteTooltip, getStockSourceLabel } from '../stockSources';
 
@@ -49,18 +50,22 @@ export class KanpanTreeItem extends vscode.TreeItem {
   }
 }
 
-function buildQuoteTreeItem(
-  type: 'stock' | 'crypto',
-  symbol: string,
-  store: MarketStore
-): KanpanTreeItem {
+function getContextValue(type: MarketType, inStatusBar: boolean): string {
+  if (type === 'stock') {
+    return inStatusBar ? 'usStockPinned' : 'usStock';
+  }
+  if (type === 'ashare') {
+    return inStatusBar ? 'aStockPinned' : 'aStock';
+  }
+  return inStatusBar ? 'cryptoPinned' : 'crypto';
+}
+
+function buildQuoteTreeItem(type: MarketType, symbol: string, store: MarketStore): KanpanTreeItem {
   const key = marketKeyOf(type, symbol);
   const cached = store.get(key);
-  const displayName = getDisplayLabel(symbol);
+  const displayName = getDisplayLabel(symbol, cached?.quote?.name);
   const inStatusBar = extensionContext ? getStatusBarItems(extensionContext).includes(key) : false;
-  const contextValue = type === 'stock'
-    ? (inStatusBar ? 'usStockPinned' : 'usStock')
-    : (inStatusBar ? 'cryptoPinned' : 'crypto');
+  const contextValue = getContextValue(type, inStatusBar);
   const pinPrefix = inStatusBar ? '$(pin) ' : '';
 
   if (cached?.error) {
@@ -90,7 +95,7 @@ function buildQuoteTreeItem(
   const volumeText = showVolume ? formatVolumeDetail(quote) : undefined;
 
   const descParts = [changeText, priceText];
-  if (sessionText) {
+  if (sessionText && type !== 'ashare') {
     descParts.push(sessionText);
   }
   if (volumeText) {
@@ -124,20 +129,31 @@ export class StockTreeProvider implements vscode.TreeDataProvider<KanpanTreeItem
   getChildren(element?: KanpanTreeItem): KanpanTreeItem[] {
     const config = getConfig();
     const stocks = config.get<string[]>('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => s.toUpperCase());
+    const aShares = config.get<string[]>('aShares', ['sh600519', 'sz300750']).map((s) => normalizeAShareCode(s));
     const source = currentStockSourceLabel();
 
     if (!element) {
-      const count = stocks.length;
       return [
         new KanpanTreeItem(
           'us-group',
-          `US Stock(${count})`,
+          `US Stock(${stocks.length})`,
           stocks.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
           {
             contextValue: 'stockGroup',
             iconId: 'graph',
             description: source,
             tooltip: `当前数据源: ${source}\n在 Settings 中可切换数据源`,
+          }
+        ),
+        new KanpanTreeItem(
+          'a-group',
+          `A Stock(${aShares.length})`,
+          aShares.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
+          {
+            contextValue: 'aStockGroup',
+            iconId: 'symbol-ruler',
+            description: '新浪财经',
+            tooltip: 'A 股行情来自新浪财经，代码如 600519、000001',
           }
         ),
       ];
@@ -152,6 +168,17 @@ export class StockTreeProvider implements vscode.TreeDataProvider<KanpanTreeItem
         ];
       }
       return stocks.map((symbol) => buildQuoteTreeItem('stock', symbol, this.store));
+    }
+
+    if (element.nodeId === 'a-group') {
+      if (aShares.length === 0) {
+        return [
+          new KanpanTreeItem('empty-ashare', '暂无 A 股，点击 + 添加', vscode.TreeItemCollapsibleState.None, {
+            iconId: 'info',
+          }),
+        ];
+      }
+      return aShares.map((symbol) => buildQuoteTreeItem('ashare', symbol, this.store));
     }
 
     return [];
@@ -234,6 +261,10 @@ export class SettingsTreeProvider implements vscode.TreeDataProvider<KanpanTreeI
       new KanpanTreeItem('settings-add-stock', '添加美股', vscode.TreeItemCollapsibleState.None, {
         iconId: 'add',
         command: { command: 'kanpan.addStock', title: '添加美股' },
+      }),
+      new KanpanTreeItem('settings-add-ashare', '添加 A 股', vscode.TreeItemCollapsibleState.None, {
+        iconId: 'add',
+        command: { command: 'kanpan.addAShare', title: '添加 A 股' },
       }),
       new KanpanTreeItem('settings-add-crypto', '添加加密货币', vscode.TreeItemCollapsibleState.None, {
         iconId: 'add',

@@ -381,10 +381,10 @@ export function formatQuoteTooltip(quote: QuoteData): string {
     `昨收: ${formatPrice(quote.previousClose)}`,
   ];
   if (quote.volume && quote.volume > 0) {
-    lines.push(`24h成交量: ${formatVolume(quote.volume)}`);
+    lines.push(`成交量: ${formatVolume(quote.volume)}`);
   }
   if (quote.quoteVolume && quote.quoteVolume > 0) {
-    lines.push(`24h成交额: ${formatVolume(quote.quoteVolume)} USDT`);
+    lines.push(`成交额: ${formatVolume(quote.quoteVolume)}`);
   }
   if (quote.session) {
     lines.push(`时段: ${sessionLabel(quote.session)}`);

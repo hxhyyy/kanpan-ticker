@@ -46,12 +46,21 @@ exports.getDisplayLabel = getDisplayLabel;
 const vscode = __importStar(require("vscode"));
 const providers_1 = require("./providers");
 const stockSources_1 = require("./stockSources");
+const aShareSources_1 = require("./aShareSources");
 function marketKeyOf(type, symbol) {
+    if (type === 'ashare') {
+        return `${type}:${(0, aShareSources_1.normalizeAShareCode)(symbol)}`;
+    }
     return `${type}:${symbol.toUpperCase()}`;
 }
 function parseMarketKey(key) {
-    const [type, symbol] = key.split(':');
-    return { type: type, symbol };
+    const colon = key.indexOf(':');
+    const type = key.slice(0, colon);
+    const symbol = key.slice(colon + 1);
+    return {
+        type,
+        symbol: type === 'ashare' ? symbol.toLowerCase() : symbol.toUpperCase(),
+    };
 }
 function getConfig() {
     return vscode.workspace.getConfiguration('kanpan');
@@ -66,12 +75,25 @@ function getStatusBarItems(context) {
         if (colon < 0) {
             return k;
         }
-        return `${k.slice(0, colon)}:${k.slice(colon + 1).toUpperCase()}`;
+        const type = k.slice(0, colon);
+        const symbol = k.slice(colon + 1);
+        if (type === 'ashare') {
+            return `${type}:${symbol.toLowerCase()}`;
+        }
+        return `${type}:${symbol.toUpperCase()}`;
     });
 }
 async function setStatusBarItems(context, items) {
     const normalized = items.map((k) => {
-        const [type, symbol] = k.split(':');
+        const colon = k.indexOf(':');
+        if (colon < 0) {
+            return k;
+        }
+        const type = k.slice(0, colon);
+        const symbol = k.slice(colon + 1);
+        if (type === 'ashare') {
+            return `${type}:${(0, aShareSources_1.normalizeAShareCode)(symbol)}`;
+        }
         return `${type}:${symbol.toUpperCase()}`;
     });
     await context.globalState.update(STATUS_BAR_ITEMS_STATE_KEY, normalized);
@@ -101,7 +123,10 @@ async function setStockDataSource(context, source) {
         // 旧版 manifest 未注册该配置时，globalState 仍可保存选择
     }
 }
-function getDisplayLabel(symbol) {
+function getDisplayLabel(symbol, name) {
+    if (name) {
+        return name;
+    }
     const aliases = getConfig().get('aliases', {});
     return aliases[symbol] ?? (0, providers_1.defaultSymbolLabel)(symbol);
 }
@@ -162,7 +187,11 @@ class MarketService {
         }
         this.rebuildStatusItemsIfNeeded();
         const stocks = config.get('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => s.toUpperCase());
-        await Promise.all(stocks.map((symbol) => this.fetchAndCache('stock', symbol)));
+        const aShares = config.get('aShares', ['sh600519', 'sz300750']).map((s) => (0, aShareSources_1.normalizeAShareCode)(s));
+        await Promise.all([
+            ...stocks.map((symbol) => this.fetchAndCache('stock', symbol)),
+            ...aShares.map((symbol) => this.fetchAndCache('ashare', symbol)),
+        ]);
         this.store.notify();
         this.updateStatusBar(config);
     }
@@ -235,6 +264,37 @@ class MarketService {
         this.start();
         void this.refresh();
     }
+    async addAShare() {
+        const symbol = await vscode.window.showInputBox({
+            prompt: '输入 A 股代码，如 600519、000001、300750',
+            placeHolder: '600519',
+            validateInput: (value) => {
+                if (!value.trim()) {
+                    return '代码不能为空';
+                }
+                try {
+                    (0, aShareSources_1.normalizeAShareCode)(value.trim());
+                    return undefined;
+                }
+                catch (error) {
+                    return error instanceof Error ? error.message : '请输入有效的 A 股代码';
+                }
+            },
+        });
+        if (!symbol) {
+            return;
+        }
+        const code = (0, aShareSources_1.normalizeAShareCode)(symbol.trim());
+        const aShares = getConfig().get('aShares', []);
+        if (aShares.map((s) => (0, aShareSources_1.normalizeAShareCode)(s)).includes(code)) {
+            vscode.window.showInformationMessage(`${code} 已在列表中`);
+            return;
+        }
+        await getConfig().update('aShares', [...aShares, code], vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`已添加 A 股 ${code}`);
+        this.start();
+        void this.refresh();
+    }
     async removeStock(symbol) {
         const key = marketKeyOf('stock', symbol);
         const stocks = getConfig().get('stocks', []);
@@ -247,6 +307,15 @@ class MarketService {
         const key = marketKeyOf('crypto', symbol);
         const symbols = getConfig().get('cryptoSymbols', []);
         await getConfig().update('cryptoSymbols', symbols.filter((s) => s.toUpperCase() !== symbol.toUpperCase()), vscode.ConfigurationTarget.Global);
+        await setStatusBarItems(this.context, getStatusBarItems(this.context).filter((item) => item !== key));
+        this.start();
+        void this.refresh();
+    }
+    async removeAShare(symbol) {
+        const code = (0, aShareSources_1.normalizeAShareCode)(symbol);
+        const key = marketKeyOf('ashare', code);
+        const aShares = getConfig().get('aShares', []);
+        await getConfig().update('aShares', aShares.filter((s) => (0, aShareSources_1.normalizeAShareCode)(s) !== code), vscode.ConfigurationTarget.Global);
         await setStatusBarItems(this.context, getStatusBarItems(this.context).filter((item) => item !== key));
         this.start();
         void this.refresh();
@@ -273,10 +342,15 @@ class MarketService {
         return (0, stockSources_1.getStockSourceLabel)(getStockDataSource(this.context));
     }
     async addToStatusBar(key) {
-        const normalized = key.includes(':') ? key : '';
-        if (!normalized || (!normalized.startsWith('stock:') && !normalized.startsWith('crypto:'))) {
+        const colon = key.indexOf(':');
+        if (colon < 0) {
             return;
         }
+        const type = key.slice(0, colon);
+        if (type !== 'stock' && type !== 'crypto' && type !== 'ashare') {
+            return;
+        }
+        const normalized = marketKeyOf(type, key.slice(colon + 1));
         const items = getStatusBarItems(this.context);
         if (items.includes(normalized)) {
             vscode.window.showInformationMessage(`${getDisplayLabel(normalized.split(':')[1])} 已在状态栏中`);
@@ -307,6 +381,7 @@ class MarketService {
         const config = getConfig();
         const defaults = [
             ...config.get('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => marketKeyOf('stock', s)),
+            ...config.get('aShares', ['sh600519', 'sz300750']).map((s) => marketKeyOf('ashare', s)),
             ...config.get('cryptoSymbols', ['BTCUSDT']).map((s) => marketKeyOf('crypto', s)),
         ];
         if (defaults.length > 0) {
@@ -324,7 +399,9 @@ class MarketService {
                     'finnhubExtended',
                     'finnhub',
                 ]))
-                : await (0, providers_1.fetchCryptoQuote)(symbol);
+                : type === 'ashare'
+                    ? await (0, aShareSources_1.fetchAShareQuote)(symbol)
+                    : await (0, providers_1.fetchCryptoQuote)(symbol);
             this.store.setQuote(key, quote);
         }
         catch (error) {
@@ -347,7 +424,7 @@ class MarketService {
         const showVolume = config.get('showVolume', true);
         for (const item of this.statusItems) {
             const cached = this.store.get(item.key);
-            const label = getDisplayLabel(item.symbol);
+            const label = getDisplayLabel(item.symbol, cached?.quote?.name);
             if (cached?.error) {
                 item.statusBarItem.text = `$(warning) ${label}`;
                 item.statusBarItem.tooltip = `${item.symbol}: ${cached.error}`;
