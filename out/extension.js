@@ -36,16 +36,20 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
+const colorSettings_1 = require("./colorSettings");
 const marketService_1 = require("./marketService");
+const quoteDecoration_1 = require("./quoteDecoration");
 const treeProviders_1 = require("./sidebar/treeProviders");
-function activate(context) {
+async function activate(context) {
     (0, treeProviders_1.bindExtensionContext)(context);
+    await (0, colorSettings_1.initKanpanThemeColors)();
     const store = new marketService_1.MarketStore();
     const marketService = new marketService_1.MarketService(context, store);
+    const quoteDecoration = new quoteDecoration_1.QuoteDecorationProvider();
     const stockProvider = new treeProviders_1.StockTreeProvider(store);
     const cryptoProvider = new treeProviders_1.CryptoTreeProvider(store);
     const settingsProvider = new treeProviders_1.SettingsTreeProvider();
-    context.subscriptions.push(vscode.window.registerTreeDataProvider('kanpanView.stock', stockProvider), vscode.window.registerTreeDataProvider('kanpanView.crypto', cryptoProvider), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
+    context.subscriptions.push(quoteDecoration, vscode.window.registerFileDecorationProvider(quoteDecoration), store.onUpdate(() => quoteDecoration.refresh()), vscode.window.registerTreeDataProvider('kanpanView.stock', stockProvider), vscode.window.registerTreeDataProvider('kanpanView.crypto', cryptoProvider), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
         await marketService.refresh();
         stockProvider.refresh();
         cryptoProvider.refresh();
@@ -88,12 +92,35 @@ function activate(context) {
         await marketService.selectStockSource();
         stockProvider.refresh();
         settingsProvider.refresh();
-    }), vscode.workspace.onDidChangeConfiguration((event) => {
+    }), vscode.commands.registerCommand('kanpan.selectColorScheme', async () => {
+        await (0, colorSettings_1.selectColorScheme)();
+        stockProvider.refresh();
+        cryptoProvider.refresh();
+        settingsProvider.refresh();
+        quoteDecoration.refresh();
+        void marketService.refresh();
+    }), vscode.commands.registerCommand('kanpan.setRiseColor', async () => {
+        await (0, colorSettings_1.setCustomColor)('rise');
+        stockProvider.refresh();
+        cryptoProvider.refresh();
+        settingsProvider.refresh();
+        quoteDecoration.refresh();
+        void marketService.refresh();
+    }), vscode.commands.registerCommand('kanpan.setFallColor', async () => {
+        await (0, colorSettings_1.setCustomColor)('fall');
+        stockProvider.refresh();
+        cryptoProvider.refresh();
+        settingsProvider.refresh();
+        quoteDecoration.refresh();
+        void marketService.refresh();
+    }), vscode.workspace.onDidChangeConfiguration(async (event) => {
         if (event.affectsConfiguration('kanpan')) {
+            await (0, colorSettings_1.initKanpanThemeColors)();
             marketService.start();
             stockProvider.refresh();
             cryptoProvider.refresh();
             settingsProvider.refresh();
+            quoteDecoration.refresh();
         }
     }), vscode.window.onDidChangeWindowState(() => {
         void marketService.refresh();

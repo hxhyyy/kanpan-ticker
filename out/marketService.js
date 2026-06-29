@@ -47,6 +47,7 @@ const vscode = __importStar(require("vscode"));
 const providers_1 = require("./providers");
 const stockSources_1 = require("./stockSources");
 const aShareSources_1 = require("./aShareSources");
+const colorSettings_1 = require("./colorSettings");
 function marketKeyOf(type, symbol) {
     if (type === 'ashare') {
         return `${type}:${(0, aShareSources_1.normalizeAShareCode)(symbol)}`;
@@ -465,8 +466,7 @@ class MarketService {
         }
         const monochrome = config.get('monochrome', false);
         const showChangePercent = config.get('showChangePercent', true);
-        const riseColor = config.get('riseColor', '#26a69a');
-        const fallColor = config.get('fallColor', '#ef5350');
+        const { rise: riseColor, fall: fallColor } = (0, colorSettings_1.getRiseFallColors)(config);
         const format = config.get('format', '{symbol} {price} {change} {icon}');
         const showVolume = config.get('showVolume', true);
         for (const item of this.statusItems) {
@@ -475,14 +475,14 @@ class MarketService {
             if (cached?.error) {
                 item.statusBarItem.text = `$(warning) ${label}`;
                 item.statusBarItem.tooltip = `${item.symbol}: ${cached.error}`;
-                item.statusBarItem.color = undefined;
+                (0, colorSettings_1.clearStatusBarItemColors)(item.statusBarItem);
                 item.statusBarItem.show();
                 continue;
             }
             if (!cached?.quote) {
                 item.statusBarItem.text = `$(sync~spin) ${label}`;
                 item.statusBarItem.tooltip = `${item.symbol}: 加载中...`;
-                item.statusBarItem.color = undefined;
+                (0, colorSettings_1.clearStatusBarItemColors)(item.statusBarItem);
                 item.statusBarItem.show();
                 continue;
             }
@@ -490,13 +490,9 @@ class MarketService {
             const priceText = (0, providers_1.formatPrice)(quote.price);
             const changeText = (0, providers_1.formatChangePercent)(quote.changePercent);
             item.statusBarItem.text = showChangePercent
-                ? (0, providers_1.renderFormat)(format, label, quote.price, quote.changePercent, !monochrome, showVolume ? (0, providers_1.formatVolumeDetail)(quote) : undefined)
+                ? (0, providers_1.renderFormat)(format, label, quote.price, quote.changePercent, !monochrome, showVolume && item.type === 'crypto' ? (0, providers_1.formatVolumeDetail)(quote) : undefined)
                 : `${label} ${priceText}`;
-            item.statusBarItem.color = monochrome
-                ? undefined
-                : quote.changePercent >= 0
-                    ? riseColor
-                    : fallColor;
+            (0, colorSettings_1.applyStatusBarItemColors)(item.statusBarItem, quote.changePercent, monochrome, riseColor, fallColor);
             item.statusBarItem.tooltip = [
                 (0, stockSources_1.formatQuoteTooltip)(quote),
                 '',

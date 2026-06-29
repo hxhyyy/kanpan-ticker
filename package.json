@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
   "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股、A 股和加密货币实时价格",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -23,6 +23,24 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "colors": [
+      {
+        "id": "kanpan.rise",
+        "description": "看盘插件上涨颜色",
+        "defaults": {
+          "dark": "#089981",
+          "light": "#089981"
+        }
+      },
+      {
+        "id": "kanpan.fall",
+        "description": "看盘插件下跌颜色",
+        "defaults": {
+          "dark": "#ef5350",
+          "light": "#ef5350"
+        }
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -96,6 +114,21 @@
         "command": "kanpan.selectStockSource",
         "title": "看盘插件: 切换美股数据源",
         "icon": "$(server-environment)"
+      },
+      {
+        "command": "kanpan.selectColorScheme",
+        "title": "看盘插件: 涨跌颜色方案",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "kanpan.setRiseColor",
+        "title": "设置上涨颜色",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "kanpan.setFallColor",
+        "title": "设置下跌颜色",
+        "icon": "$(arrow-down)"
       },
       {
         "command": "kanpan.addToStatusBar",
@@ -248,15 +281,26 @@
           "minimum": 1000,
           "description": "加密货币刷新间隔（毫秒，默认 1000 即每 1 秒）"
         },
+        "kanpan.colorScheme": {
+          "type": "string",
+          "enum": ["us", "cn", "custom"],
+          "enumDescriptions": [
+            "美国惯例：绿涨红跌",
+            "中国惯例：红涨绿跌",
+            "自定义涨跌颜色"
+          ],
+          "default": "us",
+          "description": "涨跌颜色方案"
+        },
         "kanpan.riseColor": {
           "type": "string",
-          "default": "#26a69a",
-          "description": "上涨颜色"
+          "default": "#089981",
+          "description": "上涨颜色（colorScheme 为 custom 时生效）"
         },
         "kanpan.fallColor": {
           "type": "string",
           "default": "#ef5350",
-          "description": "下跌颜色"
+          "description": "下跌颜色（colorScheme 为 custom 时生效）"
         },
         "kanpan.showChangePercent": {
           "type": "boolean",
@@ -276,7 +320,7 @@
         "kanpan.showVolume": {
           "type": "boolean",
           "default": true,
-          "description": "在侧边栏和状态栏显示成交量（量:）"
+          "description": "在侧边栏和状态栏显示加密货币成交量（量:），美股和 A 股不显示"
         },
         "kanpan.aliases": {
           "type": "object",

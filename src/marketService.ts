@@ -23,6 +23,7 @@ import {
   normalizeAShareCode,
   searchAShare,
 } from './aShareSources';
+import { getRiseFallColors, applyStatusBarItemColors, clearStatusBarItemColors } from './colorSettings';
 import { sessionLabel } from './session';
 
 export type MarketType = 'stock' | 'crypto' | 'ashare';
@@ -558,8 +559,7 @@ export class MarketService {
 
     const monochrome = config.get<boolean>('monochrome', false);
     const showChangePercent = config.get<boolean>('showChangePercent', true);
-    const riseColor = config.get<string>('riseColor', '#26a69a');
-    const fallColor = config.get<string>('fallColor', '#ef5350');
+    const { rise: riseColor, fall: fallColor } = getRiseFallColors(config);
     const format = config.get<string>('format', '{symbol} {price} {change} {icon}');
     const showVolume = config.get<boolean>('showVolume', true);
 
@@ -570,7 +570,7 @@ export class MarketService {
       if (cached?.error) {
         item.statusBarItem.text = `$(warning) ${label}`;
         item.statusBarItem.tooltip = `${item.symbol}: ${cached.error}`;
-        item.statusBarItem.color = undefined;
+        clearStatusBarItemColors(item.statusBarItem);
         item.statusBarItem.show();
         continue;
       }
@@ -578,7 +578,7 @@ export class MarketService {
       if (!cached?.quote) {
         item.statusBarItem.text = `$(sync~spin) ${label}`;
         item.statusBarItem.tooltip = `${item.symbol}: 加载中...`;
-        item.statusBarItem.color = undefined;
+        clearStatusBarItemColors(item.statusBarItem);
         item.statusBarItem.show();
         continue;
       }
@@ -594,15 +594,11 @@ export class MarketService {
             quote.price,
             quote.changePercent,
             !monochrome,
-            showVolume ? formatVolumeDetail(quote) : undefined
+            showVolume && item.type === 'crypto' ? formatVolumeDetail(quote) : undefined
           )
         : `${label} ${priceText}`;
 
-      item.statusBarItem.color = monochrome
-        ? undefined
-        : quote.changePercent >= 0
-          ? riseColor
-          : fallColor;
+      applyStatusBarItemColors(item.statusBarItem, quote.changePercent, monochrome, riseColor, fallColor);
 
       item.statusBarItem.tooltip = [
         formatQuoteTooltip(quote),
