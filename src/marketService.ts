@@ -23,7 +23,13 @@ import {
   normalizeAShareCode,
   searchAShare,
 } from './aShareSources';
-import { getRiseFallColors, applyStatusBarItemColors, clearStatusBarItemColors } from './colorSettings';
+import { applyStatusBarItemColors, clearStatusBarItemColors, getRiseFallColors } from './colorSettings';
+import {
+  indexInWatchList,
+  readWatchList,
+  reorderList,
+  writeWatchList,
+} from './sidebar/reorder';
 import { sessionLabel } from './session';
 
 export type MarketType = 'stock' | 'crypto' | 'ashare';
@@ -435,6 +441,43 @@ export class MarketService {
     );
     this.start();
     void this.refresh();
+  }
+
+  async reorderWatchItem(sourceNodeId: string, targetNodeId: string): Promise<boolean> {
+    const source = parseMarketKey(sourceNodeId);
+    const target = parseMarketKey(targetNodeId);
+    if (source.type !== target.type) {
+      return false;
+    }
+
+    const list = readWatchList(source.type);
+    const fromIndex = indexInWatchList(source.type, source.symbol, list);
+    const toIndex = indexInWatchList(target.type, target.symbol, list);
+    const next = reorderList(list, fromIndex, toIndex);
+    if (!next) {
+      return false;
+    }
+
+    await writeWatchList(source.type, next);
+    this.start();
+    void this.refresh();
+    return true;
+  }
+
+  async moveWatchItem(nodeId: string, direction: 'up' | 'down'): Promise<boolean> {
+    const parsed = parseMarketKey(nodeId);
+    const list = readWatchList(parsed.type);
+    const index = indexInWatchList(parsed.type, parsed.symbol, list);
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const next = reorderList(list, index, targetIndex);
+    if (!next) {
+      return false;
+    }
+
+    await writeWatchList(parsed.type, next);
+    this.start();
+    void this.refresh();
+    return true;
   }
 
   async selectStockSource(): Promise<void> {

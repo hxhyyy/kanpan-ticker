@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
   "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股、A 股和加密货币实时价格",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -131,6 +131,16 @@
         "icon": "$(arrow-down)"
       },
       {
+        "command": "kanpan.moveUp",
+        "title": "上移",
+        "icon": "$(chevron-up)"
+      },
+      {
+        "command": "kanpan.moveDown",
+        "title": "下移",
+        "icon": "$(chevron-down)"
+      },
+      {
         "command": "kanpan.addToStatusBar",
         "title": "添加到状态栏",
         "icon": "$(pin)"
@@ -196,9 +206,19 @@
           "group": "status@1"
         },
         {
+          "command": "kanpan.moveUp",
+          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned || viewItem == aStock || viewItem == aStockPinned)",
+          "group": "inline@1"
+        },
+        {
+          "command": "kanpan.moveDown",
+          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned || viewItem == aStock || viewItem == aStockPinned)",
+          "group": "inline@1"
+        },
+        {
           "command": "kanpan.removeAShare",
           "when": "view == kanpanView.stock && (viewItem == aStock || viewItem == aStockPinned)",
-          "group": "inline"
+          "group": "inline@2"
         },
         {
           "command": "kanpan.addToStatusBar",
@@ -211,14 +231,24 @@
           "group": "status@1"
         },
         {
+          "command": "kanpan.moveUp",
+          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned)",
+          "group": "inline@1"
+        },
+        {
+          "command": "kanpan.moveDown",
+          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned)",
+          "group": "inline@1"
+        },
+        {
           "command": "kanpan.removeStock",
           "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned)",
-          "group": "inline"
+          "group": "inline@2"
         },
         {
           "command": "kanpan.removeCrypto",
           "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned)",
-          "group": "inline"
+          "group": "inline@2"
         }
       ]
     },

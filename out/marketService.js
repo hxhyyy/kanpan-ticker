@@ -48,6 +48,7 @@ const providers_1 = require("./providers");
 const stockSources_1 = require("./stockSources");
 const aShareSources_1 = require("./aShareSources");
 const colorSettings_1 = require("./colorSettings");
+const reorder_1 = require("./sidebar/reorder");
 function marketKeyOf(type, symbol) {
     if (type === 'ashare') {
         return `${type}:${(0, aShareSources_1.normalizeAShareCode)(symbol)}`;
@@ -367,6 +368,38 @@ class MarketService {
         await setStatusBarItems(this.context, getStatusBarItems(this.context).filter((item) => item !== key));
         this.start();
         void this.refresh();
+    }
+    async reorderWatchItem(sourceNodeId, targetNodeId) {
+        const source = parseMarketKey(sourceNodeId);
+        const target = parseMarketKey(targetNodeId);
+        if (source.type !== target.type) {
+            return false;
+        }
+        const list = (0, reorder_1.readWatchList)(source.type);
+        const fromIndex = (0, reorder_1.indexInWatchList)(source.type, source.symbol, list);
+        const toIndex = (0, reorder_1.indexInWatchList)(target.type, target.symbol, list);
+        const next = (0, reorder_1.reorderList)(list, fromIndex, toIndex);
+        if (!next) {
+            return false;
+        }
+        await (0, reorder_1.writeWatchList)(source.type, next);
+        this.start();
+        void this.refresh();
+        return true;
+    }
+    async moveWatchItem(nodeId, direction) {
+        const parsed = parseMarketKey(nodeId);
+        const list = (0, reorder_1.readWatchList)(parsed.type);
+        const index = (0, reorder_1.indexInWatchList)(parsed.type, parsed.symbol, list);
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        const next = (0, reorder_1.reorderList)(list, index, targetIndex);
+        if (!next) {
+            return false;
+        }
+        await (0, reorder_1.writeWatchList)(parsed.type, next);
+        this.start();
+        void this.refresh();
+        return true;
     }
     async selectStockSource() {
         const current = getStockDataSource(this.context);

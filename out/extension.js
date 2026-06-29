@@ -39,7 +39,17 @@ const vscode = __importStar(require("vscode"));
 const colorSettings_1 = require("./colorSettings");
 const marketService_1 = require("./marketService");
 const quoteDecoration_1 = require("./quoteDecoration");
+const reorder_1 = require("./sidebar/reorder");
 const treeProviders_1 = require("./sidebar/treeProviders");
+async function moveItem(item, direction, marketService, refresh) {
+    if (!item?.nodeId) {
+        return;
+    }
+    const moved = await marketService.moveWatchItem(item.nodeId, direction);
+    if (moved) {
+        refresh();
+    }
+}
 async function activate(context) {
     (0, treeProviders_1.bindExtensionContext)(context);
     await (0, colorSettings_1.initKanpanThemeColors)();
@@ -49,14 +59,34 @@ async function activate(context) {
     const stockProvider = new treeProviders_1.StockTreeProvider(store);
     const cryptoProvider = new treeProviders_1.CryptoTreeProvider(store);
     const settingsProvider = new treeProviders_1.SettingsTreeProvider();
-    context.subscriptions.push(quoteDecoration, vscode.window.registerFileDecorationProvider(quoteDecoration), store.onUpdate(() => quoteDecoration.refresh()), vscode.window.registerTreeDataProvider('kanpanView.stock', stockProvider), vscode.window.registerTreeDataProvider('kanpanView.crypto', cryptoProvider), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
+    const refreshStockView = () => stockProvider.refresh();
+    const refreshCryptoView = () => cryptoProvider.refresh();
+    const stockView = vscode.window.createTreeView('kanpanView.stock', {
+        treeDataProvider: stockProvider,
+        dragAndDropController: (0, reorder_1.createStockDragController)((source, target) => marketService.reorderWatchItem(source, target), refreshStockView),
+    });
+    const cryptoView = vscode.window.createTreeView('kanpanView.crypto', {
+        treeDataProvider: cryptoProvider,
+        dragAndDropController: (0, reorder_1.createCryptoDragController)((source, target) => marketService.reorderWatchItem(source, target), refreshCryptoView),
+    });
+    context.subscriptions.push(quoteDecoration, stockView, cryptoView, vscode.window.registerFileDecorationProvider(quoteDecoration), store.onUpdate(() => quoteDecoration.refresh()), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
         await marketService.refresh();
         stockProvider.refresh();
         cryptoProvider.refresh();
     }), vscode.commands.registerCommand('kanpan.show', () => marketService.setStatusVisible(true)), vscode.commands.registerCommand('kanpan.hide', () => marketService.setStatusVisible(false)), vscode.commands.registerCommand('kanpan.addStock', () => marketService.addStock()), vscode.commands.registerCommand('kanpan.addAShare', async () => {
         await marketService.addAShare();
         stockProvider.refresh();
-    }), vscode.commands.registerCommand('kanpan.addCrypto', () => marketService.addCrypto()), vscode.commands.registerCommand('kanpan.removeStock', async (item) => {
+    }), vscode.commands.registerCommand('kanpan.addCrypto', () => marketService.addCrypto()), vscode.commands.registerCommand('kanpan.moveUp', async (item) => {
+        await moveItem(item, 'up', marketService, () => {
+            stockProvider.refresh();
+            cryptoProvider.refresh();
+        });
+    }), vscode.commands.registerCommand('kanpan.moveDown', async (item) => {
+        await moveItem(item, 'down', marketService, () => {
+            stockProvider.refresh();
+            cryptoProvider.refresh();
+        });
+    }), vscode.commands.registerCommand('kanpan.removeStock', async (item) => {
         const symbol = item?.nodeId?.slice(item.nodeId.indexOf(':') + 1);
         if (symbol) {
             await marketService.removeStock(symbol);

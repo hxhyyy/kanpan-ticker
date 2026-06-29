@@ -141,7 +141,7 @@ function buildQuoteTreeItem(type, symbol, store) {
     const decorationUri = showChangePercent && !monochrome ? (0, quoteDecoration_1.quoteDecorationUri)(key, quote.changePercent) : undefined;
     return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
         description: descParts.join('  '),
-        tooltip: [(0, stockSources_1.formatQuoteTooltip)(quote), inStatusBar ? '已在状态栏显示' : '右键 → 添加到状态栏'].join('\n'),
+        tooltip: [(0, stockSources_1.formatQuoteTooltip)(quote), inStatusBar ? '已在状态栏显示' : '右键 → 添加到状态栏', '可拖拽调整顺序'].join('\n'),
         iconPath,
         resourceUri: decorationUri,
         contextValue,
