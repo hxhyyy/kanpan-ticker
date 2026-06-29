@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
   "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股和比特币实时价格",
-  "version": "0.3.4",
+  "version": "0.3.6",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -201,11 +201,17 @@
           "default": "",
           "description": "Finnhub API Key（使用 Finnhub 数据源时需要，https://finnhub.io）"
         },
-        "kanpan.refreshInterval": {
+        "kanpan.stockRefreshInterval": {
           "type": "number",
-          "default": 10000,
-          "minimum": 5000,
-          "description": "刷新间隔（毫秒，最小 5000）"
+          "default": 2000,
+          "minimum": 1000,
+          "description": "美股刷新间隔（毫秒，默认 2000 即每 2 秒）"
+        },
+        "kanpan.cryptoRefreshInterval": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 1000,
+          "description": "加密货币刷新间隔（毫秒，默认 1000 即每 1 秒）"
         },
         "kanpan.riseColor": {
           "type": "string",

@@ -153,23 +153,29 @@ class MarketService {
         }
     }
     async refresh() {
+        await Promise.all([this.refreshStocks(), this.refreshCrypto()]);
+    }
+    async refreshStocks() {
         const config = getConfig();
-        const stocks = config.get('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => s.toUpperCase());
-        const cryptoSymbols = config
-            .get('cryptoSymbols', ['BTCUSDT'])
-            .map((s) => s.toUpperCase());
         if (config.get('onlyRefreshWhenFocused', false) && !vscode.window.state.focused) {
             return;
         }
         this.rebuildStatusItemsIfNeeded();
-        const tasks = [];
-        for (const symbol of stocks) {
-            tasks.push(this.fetchAndCache('stock', symbol));
+        const stocks = config.get('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => s.toUpperCase());
+        await Promise.all(stocks.map((symbol) => this.fetchAndCache('stock', symbol)));
+        this.store.notify();
+        this.updateStatusBar(config);
+    }
+    async refreshCrypto() {
+        const config = getConfig();
+        if (config.get('onlyRefreshWhenFocused', false) && !vscode.window.state.focused) {
+            return;
         }
-        for (const symbol of cryptoSymbols) {
-            tasks.push(this.fetchAndCache('crypto', symbol));
-        }
-        await Promise.all(tasks);
+        this.rebuildStatusItemsIfNeeded();
+        const cryptoSymbols = config
+            .get('cryptoSymbols', ['BTCUSDT'])
+            .map((s) => s.toUpperCase());
+        await Promise.all(cryptoSymbols.map((symbol) => this.fetchAndCache('crypto', symbol)));
         this.store.notify();
         this.updateStatusBar(config);
     }
@@ -407,12 +413,18 @@ class MarketService {
         return { key: marketKeyOf(type, symbol), type, symbol, statusBarItem };
     }
     scheduleRefresh() {
-        if (this.timer) {
-            clearInterval(this.timer);
+        if (this.stockTimer) {
+            clearInterval(this.stockTimer);
         }
-        const interval = Math.max(getConfig().get('refreshInterval', 10000), 5000);
-        void this.refresh();
-        this.timer = setInterval(() => void this.refresh(), interval);
+        if (this.cryptoTimer) {
+            clearInterval(this.cryptoTimer);
+        }
+        const stockInterval = Math.max(getConfig().get('stockRefreshInterval', 2000), 1000);
+        const cryptoInterval = Math.max(getConfig().get('cryptoRefreshInterval', 1000), 1000);
+        void this.refreshStocks();
+        void this.refreshCrypto();
+        this.stockTimer = setInterval(() => void this.refreshStocks(), stockInterval);
+        this.cryptoTimer = setInterval(() => void this.refreshCrypto(), cryptoInterval);
     }
 }
 exports.MarketService = MarketService;
