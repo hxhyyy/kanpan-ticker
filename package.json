@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
   "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股和比特币实时价格",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -88,6 +88,16 @@
         "icon": "$(server-environment)"
       },
       {
+        "command": "kanpan.addToStatusBar",
+        "title": "添加到状态栏",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "kanpan.removeFromStatusBar",
+        "title": "从状态栏移除",
+        "icon": "$(pinned-dirty)"
+      },
+      {
         "command": "kanpan.openSettings",
         "title": "打开设置",
         "icon": "$(settings-gear)"
@@ -118,13 +128,33 @@
       ],
       "view/item/context": [
         {
-          "command": "kanpan.removeStock",
+          "command": "kanpan.addToStatusBar",
           "when": "view == kanpanView.stock && viewItem == usStock",
+          "group": "status@1"
+        },
+        {
+          "command": "kanpan.removeFromStatusBar",
+          "when": "view == kanpanView.stock && viewItem == usStockPinned",
+          "group": "status@1"
+        },
+        {
+          "command": "kanpan.addToStatusBar",
+          "when": "view == kanpanView.crypto && viewItem == crypto",
+          "group": "status@1"
+        },
+        {
+          "command": "kanpan.removeFromStatusBar",
+          "when": "view == kanpanView.crypto && viewItem == cryptoPinned",
+          "group": "status@1"
+        },
+        {
+          "command": "kanpan.removeStock",
+          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned)",
           "group": "inline"
         },
         {
           "command": "kanpan.removeCrypto",
-          "when": "view == kanpanView.crypto && viewItem == crypto",
+          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned)",
           "group": "inline"
         }
       ]
@@ -160,6 +190,11 @@
           "type": "array",
           "default": ["BTCUSDT"],
           "description": "Binance 交易对，如 BTCUSDT、ETHUSDT"
+        },
+        "kanpan.statusBarItems": {
+          "type": "array",
+          "default": [],
+          "description": "显示在底部状态栏的标的，格式 stock:AAPL 或 crypto:BTCUSDT"
         },
         "kanpan.finnhubApiKey": {
           "type": "string",

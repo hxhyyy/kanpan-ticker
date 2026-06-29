@@ -76,20 +76,25 @@ function buildQuoteTreeItem(type, symbol, store) {
     const key = (0, marketService_1.marketKeyOf)(type, symbol);
     const cached = store.get(key);
     const displayName = (0, marketService_1.getDisplayLabel)(symbol);
+    const inStatusBar = extensionContext ? (0, marketService_1.getStatusBarItems)(extensionContext).includes(key) : false;
+    const contextValue = type === 'stock'
+        ? (inStatusBar ? 'usStockPinned' : 'usStock')
+        : (inStatusBar ? 'cryptoPinned' : 'crypto');
+    const pinPrefix = inStatusBar ? '$(pin) ' : '';
     if (cached?.error) {
-        return new KanpanTreeItem(key, `[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
+        return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
             description: '加载失败',
-            tooltip: `${symbol}\n${cached.error}`,
+            tooltip: `${symbol}\n${cached.error}${inStatusBar ? '\n已在状态栏显示' : '\n右键可添加到状态栏'}`,
             iconId: 'warning',
-            contextValue: type === 'stock' ? 'usStock' : 'crypto',
+            contextValue,
         });
     }
     if (!cached?.quote) {
-        return new KanpanTreeItem(key, `[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
+        return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
             description: '加载中...',
             tooltip: symbol,
             iconId: 'sync~spin',
-            contextValue: type === 'stock' ? 'usStock' : 'crypto',
+            contextValue,
         });
     }
     const quote = cached.quote;
@@ -97,11 +102,11 @@ function buildQuoteTreeItem(type, symbol, store) {
     const priceText = (0, providers_1.formatPrice)(quote.price);
     const iconId = quote.changePercent >= 0 ? 'arrow-up' : 'arrow-down';
     const sessionText = quote.session ? (0, session_1.sessionLabel)(quote.session) : '';
-    return new KanpanTreeItem(key, `[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
+    return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
         description: sessionText ? `${changeText}  ${priceText}  ${sessionText}` : `${changeText}  ${priceText}`,
-        tooltip: (0, stockSources_1.formatQuoteTooltip)(quote),
+        tooltip: [(0, stockSources_1.formatQuoteTooltip)(quote), inStatusBar ? '已在状态栏显示' : '右键 → 添加到状态栏'].join('\n'),
         iconId,
-        contextValue: type === 'stock' ? 'usStock' : 'crypto',
+        contextValue,
     });
 }
 class StockTreeProvider {

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { formatChangePercent, formatPrice } from '../providers';
-import { getDisplayLabel, getConfig, getStockDataSource, MarketStore, marketKeyOf } from '../marketService';
+import { getDisplayLabel, getConfig, getStockDataSource, getStatusBarItems, MarketStore, marketKeyOf } from '../marketService';
 import { sessionLabel } from '../session';
 import { formatQuoteTooltip, getStockSourceLabel } from '../stockSources';
 
@@ -57,22 +57,27 @@ function buildQuoteTreeItem(
   const key = marketKeyOf(type, symbol);
   const cached = store.get(key);
   const displayName = getDisplayLabel(symbol);
+  const inStatusBar = extensionContext ? getStatusBarItems(extensionContext).includes(key) : false;
+  const contextValue = type === 'stock'
+    ? (inStatusBar ? 'usStockPinned' : 'usStock')
+    : (inStatusBar ? 'cryptoPinned' : 'crypto');
+  const pinPrefix = inStatusBar ? '$(pin) ' : '';
 
   if (cached?.error) {
-    return new KanpanTreeItem(key, `[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
+    return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
       description: '加载失败',
-      tooltip: `${symbol}\n${cached.error}`,
+      tooltip: `${symbol}\n${cached.error}${inStatusBar ? '\n已在状态栏显示' : '\n右键可添加到状态栏'}`,
       iconId: 'warning',
-      contextValue: type === 'stock' ? 'usStock' : 'crypto',
+      contextValue,
     });
   }
 
   if (!cached?.quote) {
-    return new KanpanTreeItem(key, `[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
+    return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
       description: '加载中...',
       tooltip: symbol,
       iconId: 'sync~spin',
-      contextValue: type === 'stock' ? 'usStock' : 'crypto',
+      contextValue,
     });
   }
 
@@ -82,11 +87,11 @@ function buildQuoteTreeItem(
   const iconId = quote.changePercent >= 0 ? 'arrow-up' : 'arrow-down';
   const sessionText = quote.session ? sessionLabel(quote.session) : '';
 
-  return new KanpanTreeItem(key, `[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
+  return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
     description: sessionText ? `${changeText}  ${priceText}  ${sessionText}` : `${changeText}  ${priceText}`,
-    tooltip: formatQuoteTooltip(quote),
+    tooltip: [formatQuoteTooltip(quote), inStatusBar ? '已在状态栏显示' : '右键 → 添加到状态栏'].join('\n'),
     iconId,
-    contextValue: type === 'stock' ? 'usStock' : 'crypto',
+    contextValue,
   });
 }
 

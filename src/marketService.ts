@@ -42,6 +42,40 @@ export function getConfig() {
 }
 
 const STOCK_SOURCE_STATE_KEY = 'stockDataSource';
+const STATUS_BAR_ITEMS_STATE_KEY = 'statusBarItems';
+
+export function getStatusBarItems(context: vscode.ExtensionContext): string[] {
+  const fromState = context.globalState.get<string[]>(STATUS_BAR_ITEMS_STATE_KEY);
+  const items =
+    fromState && fromState.length > 0 ? fromState : getConfig().get<string[]>('statusBarItems', []);
+  return items.map((k) => {
+    const colon = k.indexOf(':');
+    if (colon < 0) {
+      return k;
+    }
+    return `${k.slice(0, colon)}:${k.slice(colon + 1).toUpperCase()}`;
+  });
+}
+
+export async function setStatusBarItems(
+  context: vscode.ExtensionContext,
+  items: string[]
+): Promise<void> {
+  const normalized = items.map((k) => {
+    const [type, symbol] = k.split(':');
+    return `${type}:${symbol.toUpperCase()}`;
+  });
+  await context.globalState.update(STATUS_BAR_ITEMS_STATE_KEY, normalized);
+  try {
+    await getConfig().update('statusBarItems', normalized, vscode.ConfigurationTarget.Global);
+  } catch {
+    // ignore
+  }
+}
+
+export function isInStatusBar(context: vscode.ExtensionContext, key: string): boolean {
+  return getStatusBarItems(context).includes(key);
+}
 
 export function getStockDataSource(context: vscode.ExtensionContext): StockDataSourceId {
   const fromState = context.globalState.get<StockDataSourceId>(STOCK_SOURCE_STATE_KEY);
@@ -112,8 +146,10 @@ export class MarketService {
   ) {}
 
   start(): void {
-    this.rebuildStatusItems();
-    this.scheduleRefresh();
+    void this.ensureStatusBarDefaults().then(() => {
+      this.rebuildStatusItems();
+      this.scheduleRefresh();
+    });
   }
 
   setStatusVisible(visible: boolean): void {
@@ -137,7 +173,7 @@ export class MarketService {
       return;
     }
 
-    this.rebuildStatusItemsIfNeeded(stocks, cryptoSymbols);
+    this.rebuildStatusItemsIfNeeded();
 
     const tasks: Array<Promise<void>> = [];
     for (const symbol of stocks) {
@@ -215,22 +251,32 @@ export class MarketService {
   }
 
   async removeStock(symbol: string): Promise<void> {
+    const key = marketKeyOf('stock', symbol);
     const stocks = getConfig().get<string[]>('stocks', []);
     await getConfig().update(
       'stocks',
       stocks.filter((s) => s.toUpperCase() !== symbol.toUpperCase()),
       vscode.ConfigurationTarget.Global
     );
+    await setStatusBarItems(
+      this.context,
+      getStatusBarItems(this.context).filter((item) => item !== key)
+    );
     this.start();
     void this.refresh();
   }
 
   async removeCrypto(symbol: string): Promise<void> {
+    const key = marketKeyOf('crypto', symbol);
     const symbols = getConfig().get<string[]>('cryptoSymbols', []);
     await getConfig().update(
       'cryptoSymbols',
       symbols.filter((s) => s.toUpperCase() !== symbol.toUpperCase()),
       vscode.ConfigurationTarget.Global
+    );
+    await setStatusBarItems(
+      this.context,
+      getStatusBarItems(this.context).filter((item) => item !== key)
     );
     this.start();
     void this.refresh();
@@ -262,6 +308,57 @@ export class MarketService {
 
   getCurrentStockSourceLabel(): string {
     return getStockSourceLabel(getStockDataSource(this.context));
+  }
+
+  async addToStatusBar(key: string): Promise<void> {
+    const normalized = key.includes(':') ? key : '';
+    if (!normalized || (!normalized.startsWith('stock:') && !normalized.startsWith('crypto:'))) {
+      return;
+    }
+
+    const items = getStatusBarItems(this.context);
+    if (items.includes(normalized)) {
+      vscode.window.showInformationMessage(`${getDisplayLabel(normalized.split(':')[1])} 已在状态栏中`);
+      return;
+    }
+
+    await setStatusBarItems(this.context, [...items, normalized]);
+    const label = getDisplayLabel(normalized.split(':')[1]);
+    vscode.window.showInformationMessage(`已添加 ${label} 到状态栏`);
+    this.rebuildStatusItems();
+    void this.refresh();
+  }
+
+  async removeFromStatusBar(key: string): Promise<void> {
+    const items = getStatusBarItems(this.context);
+    if (!items.includes(key)) {
+      return;
+    }
+
+    await setStatusBarItems(
+      this.context,
+      items.filter((item) => item !== key)
+    );
+    const label = getDisplayLabel(key.split(':')[1]);
+    vscode.window.showInformationMessage(`已从状态栏移除 ${label}`);
+    this.rebuildStatusItems();
+    void this.refresh();
+  }
+
+  async ensureStatusBarDefaults(): Promise<void> {
+    const items = getStatusBarItems(this.context);
+    if (items.length > 0) {
+      return;
+    }
+
+    const config = getConfig();
+    const defaults = [
+      ...config.get<string[]>('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => marketKeyOf('stock', s)),
+      ...config.get<string[]>('cryptoSymbols', ['BTCUSDT']).map((s) => marketKeyOf('crypto', s)),
+    ];
+    if (defaults.length > 0) {
+      await setStatusBarItems(this.context, defaults);
+    }
   }
 
   private async fetchAndCache(type: MarketType, symbol: string): Promise<void> {
@@ -346,12 +443,9 @@ export class MarketService {
     }
   }
 
-  private rebuildStatusItemsIfNeeded(stocks: string[], cryptoSymbols: string[]): void {
-    const expectedKeys = [
-      ...stocks.map((s) => marketKeyOf('stock', s)),
-      ...cryptoSymbols.map((s) => marketKeyOf('crypto', s)),
-    ];
-    if (expectedKeys.join('|') !== this.statusItems.map((i) => i.key).join('|')) {
+  private rebuildStatusItemsIfNeeded(): void {
+    const statusKeys = getStatusBarItems(this.context);
+    if (statusKeys.join('|') !== this.statusItems.map((i) => i.key).join('|')) {
       this.rebuildStatusItems();
     }
   }
@@ -362,15 +456,11 @@ export class MarketService {
     }
     this.statusItems = [];
 
-    const stocks = getConfig().get<string[]>('stocks', ['AAPL', 'NVDA', 'TSLA']);
-    const cryptoSymbols = getConfig().get<string[]>('cryptoSymbols', ['BTCUSDT']);
-
+    const statusKeys = getStatusBarItems(this.context);
     let priority = 100;
-    for (const symbol of stocks) {
-      this.statusItems.push(this.createStatusItem('stock', symbol.toUpperCase(), priority--));
-    }
-    for (const symbol of cryptoSymbols) {
-      this.statusItems.push(this.createStatusItem('crypto', symbol.toUpperCase(), priority--));
+    for (const key of statusKeys) {
+      const parsed = parseMarketKey(key);
+      this.statusItems.push(this.createStatusItem(parsed.type, parsed.symbol, priority--));
     }
   }
 

@@ -53,11 +53,25 @@ function activate(context) {
         const symbol = item?.nodeId?.split(':')[1];
         if (symbol) {
             await marketService.removeStock(symbol);
+            stockProvider.refresh();
         }
     }), vscode.commands.registerCommand('kanpan.removeCrypto', async (item) => {
         const symbol = item?.nodeId?.split(':')[1];
         if (symbol) {
             await marketService.removeCrypto(symbol);
+            cryptoProvider.refresh();
+        }
+    }), vscode.commands.registerCommand('kanpan.addToStatusBar', async (item) => {
+        if (item?.nodeId) {
+            await marketService.addToStatusBar(item.nodeId);
+            stockProvider.refresh();
+            cryptoProvider.refresh();
+        }
+    }), vscode.commands.registerCommand('kanpan.removeFromStatusBar', async (item) => {
+        if (item?.nodeId) {
+            await marketService.removeFromStatusBar(item.nodeId);
+            stockProvider.refresh();
+            cryptoProvider.refresh();
         }
     }), vscode.commands.registerCommand('kanpan.openSettings', () => {
         vscode.commands.executeCommand('workbench.action.openSettings', 'kanpan');

@@ -37,6 +37,9 @@ exports.MarketService = exports.MarketStore = void 0;
 exports.marketKeyOf = marketKeyOf;
 exports.parseMarketKey = parseMarketKey;
 exports.getConfig = getConfig;
+exports.getStatusBarItems = getStatusBarItems;
+exports.setStatusBarItems = setStatusBarItems;
+exports.isInStatusBar = isInStatusBar;
 exports.getStockDataSource = getStockDataSource;
 exports.setStockDataSource = setStockDataSource;
 exports.getDisplayLabel = getDisplayLabel;
@@ -54,6 +57,34 @@ function getConfig() {
     return vscode.workspace.getConfiguration('kanpan');
 }
 const STOCK_SOURCE_STATE_KEY = 'stockDataSource';
+const STATUS_BAR_ITEMS_STATE_KEY = 'statusBarItems';
+function getStatusBarItems(context) {
+    const fromState = context.globalState.get(STATUS_BAR_ITEMS_STATE_KEY);
+    const items = fromState && fromState.length > 0 ? fromState : getConfig().get('statusBarItems', []);
+    return items.map((k) => {
+        const colon = k.indexOf(':');
+        if (colon < 0) {
+            return k;
+        }
+        return `${k.slice(0, colon)}:${k.slice(colon + 1).toUpperCase()}`;
+    });
+}
+async function setStatusBarItems(context, items) {
+    const normalized = items.map((k) => {
+        const [type, symbol] = k.split(':');
+        return `${type}:${symbol.toUpperCase()}`;
+    });
+    await context.globalState.update(STATUS_BAR_ITEMS_STATE_KEY, normalized);
+    try {
+        await getConfig().update('statusBarItems', normalized, vscode.ConfigurationTarget.Global);
+    }
+    catch {
+        // ignore
+    }
+}
+function isInStatusBar(context, key) {
+    return getStatusBarItems(context).includes(key);
+}
 function getStockDataSource(context) {
     const fromState = context.globalState.get(STOCK_SOURCE_STATE_KEY);
     if (fromState) {
@@ -107,8 +138,10 @@ class MarketService {
         this.statusItems = [];
     }
     start() {
-        this.rebuildStatusItems();
-        this.scheduleRefresh();
+        void this.ensureStatusBarDefaults().then(() => {
+            this.rebuildStatusItems();
+            this.scheduleRefresh();
+        });
     }
     setStatusVisible(visible) {
         this.statusVisible = visible;
@@ -128,7 +161,7 @@ class MarketService {
         if (config.get('onlyRefreshWhenFocused', false) && !vscode.window.state.focused) {
             return;
         }
-        this.rebuildStatusItemsIfNeeded(stocks, cryptoSymbols);
+        this.rebuildStatusItemsIfNeeded();
         const tasks = [];
         for (const symbol of stocks) {
             tasks.push(this.fetchAndCache('stock', symbol));
@@ -197,14 +230,18 @@ class MarketService {
         void this.refresh();
     }
     async removeStock(symbol) {
+        const key = marketKeyOf('stock', symbol);
         const stocks = getConfig().get('stocks', []);
         await getConfig().update('stocks', stocks.filter((s) => s.toUpperCase() !== symbol.toUpperCase()), vscode.ConfigurationTarget.Global);
+        await setStatusBarItems(this.context, getStatusBarItems(this.context).filter((item) => item !== key));
         this.start();
         void this.refresh();
     }
     async removeCrypto(symbol) {
+        const key = marketKeyOf('crypto', symbol);
         const symbols = getConfig().get('cryptoSymbols', []);
         await getConfig().update('cryptoSymbols', symbols.filter((s) => s.toUpperCase() !== symbol.toUpperCase()), vscode.ConfigurationTarget.Global);
+        await setStatusBarItems(this.context, getStatusBarItems(this.context).filter((item) => item !== key));
         this.start();
         void this.refresh();
     }
@@ -228,6 +265,47 @@ class MarketService {
     }
     getCurrentStockSourceLabel() {
         return (0, stockSources_1.getStockSourceLabel)(getStockDataSource(this.context));
+    }
+    async addToStatusBar(key) {
+        const normalized = key.includes(':') ? key : '';
+        if (!normalized || (!normalized.startsWith('stock:') && !normalized.startsWith('crypto:'))) {
+            return;
+        }
+        const items = getStatusBarItems(this.context);
+        if (items.includes(normalized)) {
+            vscode.window.showInformationMessage(`${getDisplayLabel(normalized.split(':')[1])} 已在状态栏中`);
+            return;
+        }
+        await setStatusBarItems(this.context, [...items, normalized]);
+        const label = getDisplayLabel(normalized.split(':')[1]);
+        vscode.window.showInformationMessage(`已添加 ${label} 到状态栏`);
+        this.rebuildStatusItems();
+        void this.refresh();
+    }
+    async removeFromStatusBar(key) {
+        const items = getStatusBarItems(this.context);
+        if (!items.includes(key)) {
+            return;
+        }
+        await setStatusBarItems(this.context, items.filter((item) => item !== key));
+        const label = getDisplayLabel(key.split(':')[1]);
+        vscode.window.showInformationMessage(`已从状态栏移除 ${label}`);
+        this.rebuildStatusItems();
+        void this.refresh();
+    }
+    async ensureStatusBarDefaults() {
+        const items = getStatusBarItems(this.context);
+        if (items.length > 0) {
+            return;
+        }
+        const config = getConfig();
+        const defaults = [
+            ...config.get('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => marketKeyOf('stock', s)),
+            ...config.get('cryptoSymbols', ['BTCUSDT']).map((s) => marketKeyOf('crypto', s)),
+        ];
+        if (defaults.length > 0) {
+            await setStatusBarItems(this.context, defaults);
+        }
     }
     async fetchAndCache(type, symbol) {
         const key = marketKeyOf(type, symbol);
@@ -296,12 +374,9 @@ class MarketService {
             item.statusBarItem.show();
         }
     }
-    rebuildStatusItemsIfNeeded(stocks, cryptoSymbols) {
-        const expectedKeys = [
-            ...stocks.map((s) => marketKeyOf('stock', s)),
-            ...cryptoSymbols.map((s) => marketKeyOf('crypto', s)),
-        ];
-        if (expectedKeys.join('|') !== this.statusItems.map((i) => i.key).join('|')) {
+    rebuildStatusItemsIfNeeded() {
+        const statusKeys = getStatusBarItems(this.context);
+        if (statusKeys.join('|') !== this.statusItems.map((i) => i.key).join('|')) {
             this.rebuildStatusItems();
         }
     }
@@ -310,14 +385,11 @@ class MarketService {
             item.statusBarItem.dispose();
         }
         this.statusItems = [];
-        const stocks = getConfig().get('stocks', ['AAPL', 'NVDA', 'TSLA']);
-        const cryptoSymbols = getConfig().get('cryptoSymbols', ['BTCUSDT']);
+        const statusKeys = getStatusBarItems(this.context);
         let priority = 100;
-        for (const symbol of stocks) {
-            this.statusItems.push(this.createStatusItem('stock', symbol.toUpperCase(), priority--));
-        }
-        for (const symbol of cryptoSymbols) {
-            this.statusItems.push(this.createStatusItem('crypto', symbol.toUpperCase(), priority--));
+        for (const key of statusKeys) {
+            const parsed = parseMarketKey(key);
+            this.statusItems.push(this.createStatusItem(parsed.type, parsed.symbol, priority--));
         }
     }
     createStatusItem(type, symbol, priority) {

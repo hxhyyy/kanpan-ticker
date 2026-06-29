@@ -28,12 +28,28 @@ export function activate(context: vscode.ExtensionContext): void {
       const symbol = item?.nodeId?.split(':')[1];
       if (symbol) {
         await marketService.removeStock(symbol);
+        stockProvider.refresh();
       }
     }),
     vscode.commands.registerCommand('kanpan.removeCrypto', async (item?: { nodeId?: string }) => {
       const symbol = item?.nodeId?.split(':')[1];
       if (symbol) {
         await marketService.removeCrypto(symbol);
+        cryptoProvider.refresh();
+      }
+    }),
+    vscode.commands.registerCommand('kanpan.addToStatusBar', async (item?: { nodeId?: string }) => {
+      if (item?.nodeId) {
+        await marketService.addToStatusBar(item.nodeId);
+        stockProvider.refresh();
+        cryptoProvider.refresh();
+      }
+    }),
+    vscode.commands.registerCommand('kanpan.removeFromStatusBar', async (item?: { nodeId?: string }) => {
+      if (item?.nodeId) {
+        await marketService.removeFromStatusBar(item.nodeId);
+        stockProvider.refresh();
+        cryptoProvider.refresh();
       }
     }),
     vscode.commands.registerCommand('kanpan.openSettings', () => {
