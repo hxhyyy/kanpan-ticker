@@ -1,19 +1,47 @@
 {
   "name": "kanpan-ticker",
-  "displayName": "看盘插件",
-  "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股、A 股和加密货币实时价格",
+  "displayName": "Kanpan Ticker (码上看盘)",
+  "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
   "version": "0.5.1",
-  "publisher": "local",
+  "publisher": "your-name",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/local/kanpan-ticker"
+    "url": "https://github.com/hxhyyy/kanpan-ticker.git"
   },
+  "bugs": {
+    "url": "https://github.com/hxhyyy/kanpan-ticker/issues"
+  },
+  "homepage": "https://github.com/hxhyyy/kanpan-ticker#readme",
+  "keywords": [
+    "vscode",
+    "vscode-extension",
+    "cursor",
+    "stock",
+    "stock-ticker",
+    "ticker",
+    "crypto",
+    "bitcoin",
+    "binance",
+    "a-share",
+    "china-stock",
+    "us-stock",
+    "market",
+    "finance",
+    "status-bar",
+    "sidebar",
+    "real-time",
+    "leekfund",
+    "看盘",
+    "码上看盘",
+    "kanpan"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "activationEvents": [
     "onStartupFinished",
@@ -45,7 +73,7 @@
       "activitybar": [
         {
           "id": "kanpanMenu",
-          "title": "看盘插件",
+          "title": "Kanpan Ticker",
           "icon": "resources/kanpan.svg"
         }
       ]
@@ -253,7 +281,7 @@
       ]
     },
     "configuration": {
-      "title": "看盘插件",
+      "title": "Kanpan Ticker",
       "properties": {
         "kanpan.stocks": {
           "type": "array",
