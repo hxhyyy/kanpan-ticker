@@ -265,33 +265,80 @@ class MarketService {
         void this.refresh();
     }
     async addAShare() {
-        const symbol = await vscode.window.showInputBox({
-            prompt: '输入 A 股代码，如 600519、000001、300750',
-            placeHolder: '600519',
-            validateInput: (value) => {
-                if (!value.trim()) {
-                    return '代码不能为空';
-                }
-                try {
-                    (0, aShareSources_1.normalizeAShareCode)(value.trim());
-                    return undefined;
-                }
-                catch (error) {
-                    return error instanceof Error ? error.message : '请输入有效的 A 股代码';
-                }
-            },
+        const input = await vscode.window.showInputBox({
+            prompt: '输入 A 股代码或中文名称，如 600519、贵州茅台、茅台',
+            placeHolder: '600519 或 贵州茅台',
+            validateInput: (value) => (value.trim() ? undefined : '不能为空'),
         });
-        if (!symbol) {
+        if (!input) {
             return;
         }
-        const code = (0, aShareSources_1.normalizeAShareCode)(symbol.trim());
+        const trimmed = input.trim();
+        let code;
+        let displayName;
+        if ((0, aShareSources_1.isAShareCodeInput)(trimmed)) {
+            if ((0, aShareSources_1.isAmbiguousBareCode)(trimmed)) {
+                const bare = trimmed.padStart(6, '0');
+                const options = aShareSources_1.AMBIGUOUS_BARE_CODES[bare] ?? [];
+                const picked = await vscode.window.showQuickPick(options.map((item) => ({
+                    label: item.name,
+                    description: item.code,
+                    code: item.code,
+                })), { placeHolder: `「${bare}」对应多个标的，请选择` });
+                if (!picked) {
+                    return;
+                }
+                code = picked.code;
+                displayName = picked.label;
+            }
+            else {
+                try {
+                    code = (0, aShareSources_1.normalizeAShareCode)(trimmed);
+                }
+                catch (error) {
+                    vscode.window.showErrorMessage(error instanceof Error ? error.message : '无效的 A 股代码');
+                    return;
+                }
+            }
+        }
+        else {
+            const results = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `正在搜索「${trimmed}」...`,
+            }, () => (0, aShareSources_1.searchAShare)(trimmed));
+            if (results.length === 0) {
+                vscode.window.showWarningMessage(`未找到与「${trimmed}」匹配的 A 股`);
+                return;
+            }
+            if (results.length === 1) {
+                code = results[0].code;
+                displayName = results[0].name;
+            }
+            else {
+                const picked = await vscode.window.showQuickPick(results.map((item) => ({
+                    label: item.name,
+                    description: [item.code.slice(2), item.typeName].filter(Boolean).join(' · '),
+                    detail: item.code,
+                    code: item.code,
+                })), {
+                    placeHolder: `选择「${trimmed}」的匹配结果`,
+                    matchOnDescription: true,
+                    matchOnDetail: true,
+                });
+                if (!picked) {
+                    return;
+                }
+                code = picked.code;
+                displayName = picked.label;
+            }
+        }
         const aShares = getConfig().get('aShares', []);
         if (aShares.map((s) => (0, aShareSources_1.normalizeAShareCode)(s)).includes(code)) {
-            vscode.window.showInformationMessage(`${code} 已在列表中`);
+            vscode.window.showInformationMessage(`${displayName ?? code} 已在列表中`);
             return;
         }
         await getConfig().update('aShares', [...aShares, code], vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`已添加 A 股 ${code}`);
+        vscode.window.showInformationMessage(`已添加 A 股 ${displayName ?? code}`);
         this.start();
         void this.refresh();
     }

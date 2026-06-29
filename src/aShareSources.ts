@@ -40,6 +40,48 @@ export function normalizeAShareCode(input: string): string {
   throw new Error(`无效的 A 股代码: ${input}`);
 }
 
+/** 000001 等同码在不同交易所含义不同 */
+export const AMBIGUOUS_BARE_CODES: Record<string, Array<{ code: string; name: string }>> = {
+  '000001': [
+    { code: 'sh000001', name: '上证指数' },
+    { code: 'sz000001', name: '平安银行' },
+  ],
+};
+
+export function isAmbiguousBareCode(input: string): boolean {
+  const raw = input.trim().toLowerCase();
+  if (/^(sh|sz|bj)\d{6}$/.test(raw)) {
+    return false;
+  }
+  if (/^\d{6}$/.test(raw)) {
+    return raw in AMBIGUOUS_BARE_CODES;
+  }
+  return false;
+}
+
+/** 东方财富 QuoteID：1.xxxxxx=上交所，0.xxxxxx=深交所 */
+export function codeFromEastMoneyQuoteId(quoteId: string | undefined, code: string): string {
+  if (quoteId) {
+    const dot = quoteId.indexOf('.');
+    if (dot >= 0) {
+      const market = quoteId.slice(0, dot);
+      const digits = code.padStart(6, '0');
+      if (/^\d{6}$/.test(digits)) {
+        if (market === '1') {
+          return `sh${digits}`;
+        }
+        if (market === '0') {
+          if (digits.startsWith('8') || digits.startsWith('4')) {
+            return `bj${digits}`;
+          }
+          return `sz${digits}`;
+        }
+      }
+    }
+  }
+  return normalizeAShareCode(code);
+}
+
 function parseNumber(value: string): number {
   const num = parseFloat(value);
   return Number.isFinite(num) ? num : 0;
@@ -117,4 +159,56 @@ export function aShareDisplayLabel(code: string, name?: string): string {
     return normalized.slice(2);
   }
   return code;
+}
+
+export interface AShareSearchResult {
+  code: string;
+  name: string;
+  typeName?: string;
+}
+
+export function isAShareCodeInput(input: string): boolean {
+  const raw = input.trim().toLowerCase();
+  return /^(sh|sz|bj)\d{6}$/.test(raw) || /^\d{6}$/.test(raw);
+}
+
+/** 东方财富 A 股搜索，支持中文名称、拼音、代码 */
+export async function searchAShare(keyword: string): Promise<AShareSearchResult[]> {
+  const trimmed = keyword.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(trimmed)}&type=14&count=20`;
+  const buffer = await httpGetBuffer(url, {
+    Referer: 'https://www.eastmoney.com/',
+    'User-Agent': 'Mozilla/5.0',
+  });
+  const json = JSON.parse(buffer.toString('utf8')) as {
+    QuotationCodeTable?: {
+      Data?: Array<{ Code?: string; Name?: string; QuoteID?: string; SecurityTypeName?: string }>;
+    };
+  };
+
+  const rows = json.QuotationCodeTable?.Data ?? [];
+  const seen = new Set<string>();
+  const results: AShareSearchResult[] = [];
+
+  for (const row of rows) {
+    if (!row.Code || !row.Name) {
+      continue;
+    }
+    try {
+      const code = codeFromEastMoneyQuoteId(row.QuoteID, row.Code);
+      if (seen.has(code)) {
+        continue;
+      }
+      seen.add(code);
+      results.push({ code, name: row.Name, typeName: row.SecurityTypeName });
+    } catch {
+      // skip invalid codes
+    }
+  }
+
+  return results;
 }

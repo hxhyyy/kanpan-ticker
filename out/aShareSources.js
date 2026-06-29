@@ -33,9 +33,14 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.AMBIGUOUS_BARE_CODES = void 0;
 exports.normalizeAShareCode = normalizeAShareCode;
+exports.isAmbiguousBareCode = isAmbiguousBareCode;
+exports.codeFromEastMoneyQuoteId = codeFromEastMoneyQuoteId;
 exports.fetchAShareQuote = fetchAShareQuote;
 exports.aShareDisplayLabel = aShareDisplayLabel;
+exports.isAShareCodeInput = isAShareCodeInput;
+exports.searchAShare = searchAShare;
 const http = __importStar(require("http"));
 const https = __importStar(require("https"));
 const iconv = __importStar(require("iconv-lite"));
@@ -73,6 +78,45 @@ function normalizeAShareCode(input) {
         return `sz${raw}`;
     }
     throw new Error(`无效的 A 股代码: ${input}`);
+}
+/** 000001 等同码在不同交易所含义不同 */
+exports.AMBIGUOUS_BARE_CODES = {
+    '000001': [
+        { code: 'sh000001', name: '上证指数' },
+        { code: 'sz000001', name: '平安银行' },
+    ],
+};
+function isAmbiguousBareCode(input) {
+    const raw = input.trim().toLowerCase();
+    if (/^(sh|sz|bj)\d{6}$/.test(raw)) {
+        return false;
+    }
+    if (/^\d{6}$/.test(raw)) {
+        return raw in exports.AMBIGUOUS_BARE_CODES;
+    }
+    return false;
+}
+/** 东方财富 QuoteID：1.xxxxxx=上交所，0.xxxxxx=深交所 */
+function codeFromEastMoneyQuoteId(quoteId, code) {
+    if (quoteId) {
+        const dot = quoteId.indexOf('.');
+        if (dot >= 0) {
+            const market = quoteId.slice(0, dot);
+            const digits = code.padStart(6, '0');
+            if (/^\d{6}$/.test(digits)) {
+                if (market === '1') {
+                    return `sh${digits}`;
+                }
+                if (market === '0') {
+                    if (digits.startsWith('8') || digits.startsWith('4')) {
+                        return `bj${digits}`;
+                    }
+                    return `sz${digits}`;
+                }
+            }
+        }
+    }
+    return normalizeAShareCode(code);
 }
 function parseNumber(value) {
     const num = parseFloat(value);
@@ -141,5 +185,42 @@ function aShareDisplayLabel(code, name) {
         return normalized.slice(2);
     }
     return code;
+}
+function isAShareCodeInput(input) {
+    const raw = input.trim().toLowerCase();
+    return /^(sh|sz|bj)\d{6}$/.test(raw) || /^\d{6}$/.test(raw);
+}
+/** 东方财富 A 股搜索，支持中文名称、拼音、代码 */
+async function searchAShare(keyword) {
+    const trimmed = keyword.trim();
+    if (!trimmed) {
+        return [];
+    }
+    const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(trimmed)}&type=14&count=20`;
+    const buffer = await httpGetBuffer(url, {
+        Referer: 'https://www.eastmoney.com/',
+        'User-Agent': 'Mozilla/5.0',
+    });
+    const json = JSON.parse(buffer.toString('utf8'));
+    const rows = json.QuotationCodeTable?.Data ?? [];
+    const seen = new Set();
+    const results = [];
+    for (const row of rows) {
+        if (!row.Code || !row.Name) {
+            continue;
+        }
+        try {
+            const code = codeFromEastMoneyQuoteId(row.QuoteID, row.Code);
+            if (seen.has(code)) {
+                continue;
+            }
+            seen.add(code);
+            results.push({ code, name: row.Name, typeName: row.SecurityTypeName });
+        }
+        catch {
+            // skip invalid codes
+        }
+    }
+    return results;
 }
 //# sourceMappingURL=aShareSources.js.map

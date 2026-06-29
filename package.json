@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
   "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股、A 股和加密货币实时价格",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -200,7 +200,7 @@
         "kanpan.aShares": {
           "type": "array",
           "default": ["sh600519", "sz300750"],
-          "description": "要监控的 A 股代码，如 sh600519、sz300750，也可只写 600519"
+          "description": "要监控的 A 股代码，如 sh600519、600519；添加时也可输入中文名称搜索"
         },
         "kanpan.stockDataSource": {
           "type": "string",
