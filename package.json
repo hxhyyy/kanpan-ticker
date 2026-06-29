@@ -1,8 +1,8 @@
 {
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
-  "description": "在 VS Code / Cursor 状态栏查看美股和比特币实时价格",
-  "version": "0.1.0",
+  "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股和比特币实时价格",
+  "version": "0.2.0",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -16,32 +16,109 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onView:kanpanView.stock",
+    "onView:kanpanView.crypto",
+    "onView:kanpanView.settings"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kanpanMenu",
+          "title": "看盘插件",
+          "icon": "resources/kanpan.svg"
+        }
+      ]
+    },
+    "views": {
+      "kanpanMenu": [
+        {
+          "id": "kanpanView.stock",
+          "name": "Stock"
+        },
+        {
+          "id": "kanpanView.crypto",
+          "name": "Crypto"
+        },
+        {
+          "id": "kanpanView.settings",
+          "name": "Settings"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "kanpan.refresh",
-        "title": "看盘插件: 立即刷新"
+        "title": "看盘插件: 立即刷新",
+        "icon": "$(refresh)"
       },
       {
         "command": "kanpan.show",
-        "title": "看盘插件: 显示"
+        "title": "看盘插件: 显示状态栏"
       },
       {
         "command": "kanpan.hide",
-        "title": "看盘插件: 隐藏"
+        "title": "看盘插件: 隐藏状态栏"
       },
       {
         "command": "kanpan.addStock",
-        "title": "看盘插件: 添加美股"
+        "title": "看盘插件: 添加美股",
+        "icon": "$(add)"
       },
       {
         "command": "kanpan.addCrypto",
-        "title": "看盘插件: 添加加密货币"
+        "title": "看盘插件: 添加加密货币",
+        "icon": "$(add)"
+      },
+      {
+        "command": "kanpan.removeStock",
+        "title": "删除美股",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kanpan.removeCrypto",
+        "title": "删除加密货币",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kanpan.openSettings",
+        "title": "打开设置",
+        "icon": "$(settings-gear)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "kanpan.refresh",
+          "when": "view == kanpanView.stock || view == kanpanView.crypto",
+          "group": "navigation"
+        },
+        {
+          "command": "kanpan.addStock",
+          "when": "view == kanpanView.stock",
+          "group": "navigation"
+        },
+        {
+          "command": "kanpan.addCrypto",
+          "when": "view == kanpanView.crypto",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "kanpan.removeStock",
+          "when": "view == kanpanView.stock && viewItem == usStock",
+          "group": "inline"
+        },
+        {
+          "command": "kanpan.removeCrypto",
+          "when": "view == kanpanView.crypto && viewItem == crypto",
+          "group": "inline"
+        }
+      ]
+    },
     "configuration": {
       "title": "看盘插件",
       "properties": {
@@ -89,7 +166,7 @@
         "kanpan.format": {
           "type": "string",
           "default": "{symbol} {price} {change} {icon}",
-          "description": "显示格式，可用占位符: {symbol} {price} {change} {icon}"
+          "description": "状态栏格式，占位符: {symbol} {price} {change} {icon}"
         },
         "kanpan.aliases": {
           "type": "object",
@@ -99,7 +176,7 @@
         "kanpan.onlyRefreshWhenFocused": {
           "type": "boolean",
           "default": false,
-          "description": "仅在窗口聚焦时刷新（参考 vscode-crypto-ticker）"
+          "description": "仅在窗口聚焦时刷新"
         },
         "kanpan.enabled": {
           "type": "boolean",
