@@ -1,7 +1,7 @@
 import * as http from 'http';
 import * as https from 'https';
 import * as iconv from 'iconv-lite';
-import { formatPrice, QuoteData } from './providers';
+import { formatPrice, formatVolume, QuoteData } from './providers';
 import { getUsMarketSession, MarketSession, sessionLabel } from './session';
 
 export type StockDataSourceId =
@@ -158,7 +158,7 @@ export async function fetchFromFinnhub(
 }
 
 export async function fetchFromEastMoney(symbol: string): Promise<QuoteData> {
-  const fields = 'f43,f44,f45,f46,f57,f58,f60,f169,f170,f400';
+  const fields = 'f43,f44,f45,f46,f57,f58,f60,f169,f170,f400,f5,f6';
   const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=105.${encodeURIComponent(symbol)}&fields=${fields}`;
   const body = (await httpGet(url)).toString('utf8');
   const json = JSON.parse(body) as { data?: Record<string, number | string> };
@@ -199,6 +199,8 @@ export async function fetchFromEastMoney(symbol: string): Promise<QuoteData> {
       open,
       name: String(data.f58 ?? ''),
       session,
+      volume: parseNumber(data.f5),
+      quoteVolume: parseNumber(data.f6),
     },
     '东方财富'
   );
@@ -268,6 +270,7 @@ export async function fetchFromSina(symbol: string): Promise<QuoteData> {
       open,
       name: params[0],
       session,
+      volume: parseNumber(params[10]),
     },
     '新浪财经'
   );
@@ -377,6 +380,12 @@ export function formatQuoteTooltip(quote: QuoteData): string {
     `最低: ${formatPrice(quote.low)}`,
     `昨收: ${formatPrice(quote.previousClose)}`,
   ];
+  if (quote.volume && quote.volume > 0) {
+    lines.push(`24h成交量: ${formatVolume(quote.volume)}`);
+  }
+  if (quote.quoteVolume && quote.quoteVolume > 0) {
+    lines.push(`24h成交额: ${formatVolume(quote.quoteVolume)} USDT`);
+  }
   if (quote.session) {
     lines.push(`时段: ${sessionLabel(quote.session)}`);
   }

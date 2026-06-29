@@ -155,7 +155,7 @@ async function fetchFromFinnhub(symbol, apiKey, extended = false) {
     }, extended ? 'Finnhub 盘前盘后' : 'Finnhub');
 }
 async function fetchFromEastMoney(symbol) {
-    const fields = 'f43,f44,f45,f46,f57,f58,f60,f169,f170,f400';
+    const fields = 'f43,f44,f45,f46,f57,f58,f60,f169,f170,f400,f5,f6';
     const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=105.${encodeURIComponent(symbol)}&fields=${fields}`;
     const body = (await httpGet(url)).toString('utf8');
     const json = JSON.parse(body);
@@ -192,6 +192,8 @@ async function fetchFromEastMoney(symbol) {
         open,
         name: String(data.f58 ?? ''),
         session,
+        volume: parseNumber(data.f5),
+        quoteVolume: parseNumber(data.f6),
     }, '东方财富');
 }
 async function fetchFromSina(symbol) {
@@ -250,6 +252,7 @@ async function fetchFromSina(symbol) {
         open,
         name: params[0],
         session,
+        volume: parseNumber(params[10]),
     }, '新浪财经');
 }
 async function fetchFromTencent(symbol) {
@@ -330,6 +333,12 @@ function formatQuoteTooltip(quote) {
         `最低: ${(0, providers_1.formatPrice)(quote.low)}`,
         `昨收: ${(0, providers_1.formatPrice)(quote.previousClose)}`,
     ];
+    if (quote.volume && quote.volume > 0) {
+        lines.push(`24h成交量: ${(0, providers_1.formatVolume)(quote.volume)}`);
+    }
+    if (quote.quoteVolume && quote.quoteVolume > 0) {
+        lines.push(`24h成交额: ${(0, providers_1.formatVolume)(quote.quoteVolume)} USDT`);
+    }
     if (quote.session) {
         lines.push(`时段: ${(0, session_1.sessionLabel)(quote.session)}`);
     }

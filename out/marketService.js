@@ -338,6 +338,7 @@ class MarketService {
         const riseColor = config.get('riseColor', '#26a69a');
         const fallColor = config.get('fallColor', '#ef5350');
         const format = config.get('format', '{symbol} {price} {change} {icon}');
+        const showVolume = config.get('showVolume', true);
         for (const item of this.statusItems) {
             const cached = this.store.get(item.key);
             const label = getDisplayLabel(item.symbol);
@@ -359,7 +360,7 @@ class MarketService {
             const priceText = (0, providers_1.formatPrice)(quote.price);
             const changeText = (0, providers_1.formatChangePercent)(quote.changePercent);
             item.statusBarItem.text = showChangePercent
-                ? (0, providers_1.renderFormat)(format, label, quote.price, quote.changePercent, !monochrome)
+                ? (0, providers_1.renderFormat)(format, label, quote.price, quote.changePercent, !monochrome, showVolume ? (0, providers_1.formatVolumeDetail)(quote) : undefined)
                 : `${label} ${priceText}`;
             item.statusBarItem.color = monochrome
                 ? undefined

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { formatChangePercent, formatPrice } from '../providers';
+import { formatChangePercent, formatPrice, formatVolumeDetail } from '../providers';
 import { getDisplayLabel, getConfig, getStockDataSource, getStatusBarItems, MarketStore, marketKeyOf } from '../marketService';
 import { sessionLabel } from '../session';
 import { formatQuoteTooltip, getStockSourceLabel } from '../stockSources';
@@ -86,9 +86,19 @@ function buildQuoteTreeItem(
   const priceText = formatPrice(quote.price);
   const iconId = quote.changePercent >= 0 ? 'arrow-up' : 'arrow-down';
   const sessionText = quote.session ? sessionLabel(quote.session) : '';
+  const showVolume = getConfig().get<boolean>('showVolume', true);
+  const volumeText = showVolume ? formatVolumeDetail(quote) : undefined;
+
+  const descParts = [changeText, priceText];
+  if (sessionText) {
+    descParts.push(sessionText);
+  }
+  if (volumeText) {
+    descParts.push(volumeText);
+  }
 
   return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
-    description: sessionText ? `${changeText}  ${priceText}  ${sessionText}` : `${changeText}  ${priceText}`,
+    description: descParts.join('  '),
     tooltip: [formatQuoteTooltip(quote), inStatusBar ? '已在状态栏显示' : '右键 → 添加到状态栏'].join('\n'),
     iconId,
     contextValue,

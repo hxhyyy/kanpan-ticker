@@ -6,6 +6,7 @@ import {
   formatPrice,
   QuoteData,
   renderFormat,
+  formatVolumeDetail,
 } from './providers';
 import {
   fetchStockQuoteBySource,
@@ -399,6 +400,7 @@ export class MarketService {
     const riseColor = config.get<string>('riseColor', '#26a69a');
     const fallColor = config.get<string>('fallColor', '#ef5350');
     const format = config.get<string>('format', '{symbol} {price} {change} {icon}');
+    const showVolume = config.get<boolean>('showVolume', true);
 
     for (const item of this.statusItems) {
       const cached = this.store.get(item.key);
@@ -425,7 +427,14 @@ export class MarketService {
       const changeText = formatChangePercent(quote.changePercent);
 
       item.statusBarItem.text = showChangePercent
-        ? renderFormat(format, label, quote.price, quote.changePercent, !monochrome)
+        ? renderFormat(
+            format,
+            label,
+            quote.price,
+            quote.changePercent,
+            !monochrome,
+            showVolume ? formatVolumeDetail(quote) : undefined
+          )
         : `${label} ${priceText}`;
 
       item.statusBarItem.color = monochrome

@@ -37,6 +37,8 @@ exports.fetchCryptoQuote = fetchCryptoQuote;
 exports.defaultSymbolLabel = defaultSymbolLabel;
 exports.formatPrice = formatPrice;
 exports.formatChangePercent = formatChangePercent;
+exports.formatVolume = formatVolume;
+exports.formatVolumeDetail = formatVolumeDetail;
 exports.renderFormat = renderFormat;
 const https = __importStar(require("https"));
 function httpGet(url) {
@@ -69,6 +71,8 @@ async function fetchCryptoQuote(symbol) {
         high: parseFloat(json.highPrice),
         low: parseFloat(json.lowPrice),
         open: parseFloat(json.openPrice),
+        volume: parseFloat(json.volume),
+        quoteVolume: parseFloat(json.quoteVolume),
     };
 }
 function defaultSymbolLabel(symbol) {
@@ -90,12 +94,38 @@ function formatChangePercent(changePercent) {
     const sign = changePercent >= 0 ? '+' : '';
     return `${sign}${changePercent.toFixed(2)}%`;
 }
-function renderFormat(template, symbol, price, changePercent, showIcon) {
+/** 格式化大数字成交量/成交额，如 1.23B、456.7M */
+function formatVolume(value) {
+    if (value === undefined || !Number.isFinite(value) || value <= 0) {
+        return '-';
+    }
+    if (value >= 1e9) {
+        return `${(value / 1e9).toFixed(2)}B`;
+    }
+    if (value >= 1e6) {
+        return `${(value / 1e6).toFixed(2)}M`;
+    }
+    if (value >= 1e3) {
+        return `${(value / 1e3).toFixed(1)}K`;
+    }
+    return value.toFixed(0);
+}
+function formatVolumeDetail(quote) {
+    if (quote.quoteVolume && quote.quoteVolume > 0) {
+        return `额 ${formatVolume(quote.quoteVolume)}`;
+    }
+    if (quote.volume && quote.volume > 0) {
+        return `量 ${formatVolume(quote.volume)}`;
+    }
+    return undefined;
+}
+function renderFormat(template, symbol, price, changePercent, showIcon, volumeText) {
     const icon = showIcon ? (changePercent >= 0 ? '$(arrow-up)' : '$(arrow-down)') : '';
     return template
         .replace(/\{symbol\}/g, symbol)
         .replace(/\{price\}/g, formatPrice(price))
         .replace(/\{change\}/g, formatChangePercent(changePercent))
+        .replace(/\{volume\}/g, volumeText ?? '-')
         .replace(/\{icon\}/g, icon)
         .replace(/\s+/g, ' ')
         .trim();

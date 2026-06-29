@@ -102,8 +102,17 @@ function buildQuoteTreeItem(type, symbol, store) {
     const priceText = (0, providers_1.formatPrice)(quote.price);
     const iconId = quote.changePercent >= 0 ? 'arrow-up' : 'arrow-down';
     const sessionText = quote.session ? (0, session_1.sessionLabel)(quote.session) : '';
+    const showVolume = (0, marketService_1.getConfig)().get('showVolume', true);
+    const volumeText = showVolume ? (0, providers_1.formatVolumeDetail)(quote) : undefined;
+    const descParts = [changeText, priceText];
+    if (sessionText) {
+        descParts.push(sessionText);
+    }
+    if (volumeText) {
+        descParts.push(volumeText);
+    }
     return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
-        description: sessionText ? `${changeText}  ${priceText}  ${sessionText}` : `${changeText}  ${priceText}`,
+        description: descParts.join('  '),
         tooltip: [(0, stockSources_1.formatQuoteTooltip)(quote), inStatusBar ? '已在状态栏显示' : '右键 → 添加到状态栏'].join('\n'),
         iconId,
         contextValue,

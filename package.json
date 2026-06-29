@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
   "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股和比特币实时价格",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -230,7 +230,12 @@
         "kanpan.format": {
           "type": "string",
           "default": "{symbol} {price} {change} {icon}",
-          "description": "状态栏格式，占位符: {symbol} {price} {change} {icon}"
+          "description": "状态栏格式，占位符: {symbol} {price} {change} {volume} {icon}"
+        },
+        "kanpan.showVolume": {
+          "type": "boolean",
+          "default": true,
+          "description": "在侧边栏和状态栏显示成交量/成交额"
         },
         "kanpan.aliases": {
           "type": "object",
