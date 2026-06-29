@@ -1,4 +1,5 @@
 import * as https from 'https';
+import { MarketSession } from './session';
 
 export interface QuoteData {
   symbol: string;
@@ -8,6 +9,9 @@ export interface QuoteData {
   high: number;
   low: number;
   open: number;
+  dataSource?: string;
+  session?: MarketSession;
+  name?: string;
 }
 
 function httpGet(url: string): Promise<string> {
@@ -26,38 +30,6 @@ function httpGet(url: string): Promise<string> {
       })
       .on('error', reject);
   });
-}
-
-/** Finnhub quote API - same approach as US Stock Bar */
-export async function fetchStockQuote(symbol: string, apiKey: string): Promise<QuoteData> {
-  if (!apiKey) {
-    throw new Error('请配置 kanpan.finnhubApiKey');
-  }
-
-  const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(apiKey)}`;
-  const body = await httpGet(url);
-  const json = JSON.parse(body) as {
-    c: number;
-    dp: number;
-    h: number;
-    l: number;
-    o: number;
-    pc: number;
-  };
-
-  if (json.c === 0 && json.pc === 0) {
-    throw new Error(`无 ${symbol} 数据，请检查代码是否正确`);
-  }
-
-  return {
-    symbol,
-    price: json.c,
-    changePercent: json.dp ?? 0,
-    previousClose: json.pc,
-    high: json.h,
-    low: json.l,
-    open: json.o,
-  };
 }
 
 /** Binance 24hr ticker - same approach as CryptoTickerPlus */

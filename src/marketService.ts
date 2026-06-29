@@ -2,12 +2,19 @@ import * as vscode from 'vscode';
 import {
   defaultSymbolLabel,
   fetchCryptoQuote,
-  fetchStockQuote,
   formatChangePercent,
   formatPrice,
   QuoteData,
   renderFormat,
 } from './providers';
+import {
+  fetchStockQuoteBySource,
+  formatQuoteTooltip,
+  getStockSourceLabel,
+  StockDataSourceId,
+  STOCK_SOURCE_OPTIONS,
+} from './stockSources';
+import { sessionLabel } from './session';
 
 export type MarketType = 'stock' | 'crypto';
 
@@ -32,6 +39,28 @@ interface CachedEntry {
 
 export function getConfig() {
   return vscode.workspace.getConfiguration('kanpan');
+}
+
+const STOCK_SOURCE_STATE_KEY = 'stockDataSource';
+
+export function getStockDataSource(context: vscode.ExtensionContext): StockDataSourceId {
+  const fromState = context.globalState.get<StockDataSourceId>(STOCK_SOURCE_STATE_KEY);
+  if (fromState) {
+    return fromState;
+  }
+  return getConfig().get<StockDataSourceId>('stockDataSource', 'auto');
+}
+
+export async function setStockDataSource(
+  context: vscode.ExtensionContext,
+  source: StockDataSourceId
+): Promise<void> {
+  await context.globalState.update(STOCK_SOURCE_STATE_KEY, source);
+  try {
+    await getConfig().update('stockDataSource', source, vscode.ConfigurationTarget.Global);
+  } catch {
+    // 旧版 manifest 未注册该配置时，globalState 仍可保存选择
+  }
 }
 
 export function getDisplayLabel(symbol: string): string {
@@ -207,12 +236,51 @@ export class MarketService {
     void this.refresh();
   }
 
+  async selectStockSource(): Promise<void> {
+    const current = getStockDataSource(this.context);
+    const picked = await vscode.window.showQuickPick(
+      STOCK_SOURCE_OPTIONS.map((option) => ({
+        label: option.id === current ? `$(check) ${option.label}` : option.label,
+        description: option.description,
+        detail: option.needsApiKey ? '需要 Finnhub API Key' : '无需 API Key',
+        id: option.id,
+      })),
+      {
+        placeHolder: '选择美股数据源',
+        title: '看盘插件 - 美股数据源',
+      }
+    );
+
+    if (!picked) {
+      return;
+    }
+
+    await setStockDataSource(this.context, picked.id);
+    vscode.window.showInformationMessage(`美股数据源已切换为：${getStockSourceLabel(picked.id)}`);
+    void this.refresh();
+  }
+
+  getCurrentStockSourceLabel(): string {
+    return getStockSourceLabel(getStockDataSource(this.context));
+  }
+
   private async fetchAndCache(type: MarketType, symbol: string): Promise<void> {
     const key = marketKeyOf(type, symbol);
     try {
       const quote =
         type === 'stock'
-          ? await fetchStockQuote(symbol, getConfig().get<string>('finnhubApiKey', ''))
+          ? await fetchStockQuoteBySource(
+              symbol,
+              getStockDataSource(this.context),
+              getConfig().get<string>('finnhubApiKey', ''),
+              getConfig().get<string[]>('autoFallbackOrder', [
+                'eastmoney',
+                'sina',
+                'tencent',
+                'finnhubExtended',
+                'finnhub',
+              ])
+            )
           : await fetchCryptoQuote(symbol);
       this.store.setQuote(key, quote);
     } catch (error) {
@@ -270,13 +338,7 @@ export class MarketService {
           : fallColor;
 
       item.statusBarItem.tooltip = [
-        quote.symbol,
-        `现价: ${priceText}`,
-        `涨跌: ${changeText}`,
-        `开盘: ${formatPrice(quote.open)}`,
-        `最高: ${formatPrice(quote.high)}`,
-        `最低: ${formatPrice(quote.low)}`,
-        `昨收: ${formatPrice(quote.previousClose)}`,
+        formatQuoteTooltip(quote),
         '',
         '点击刷新',
       ].join('\n');

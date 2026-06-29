@@ -1,40 +1,47 @@
 # 看盘插件
 
-在 VS Code / Cursor **状态栏** 和 **侧边栏** 同时查看美股和比特币实时价格。
-
-参考 [LeekFund 韭菜盒子](https://github.com/LeekHub/leek-fund) 的侧边栏 TreeView 设计。
+在 VS Code / Cursor **状态栏** 和 **侧边栏** 查看美股和比特币实时价格。
 
 ## 功能
 
-- **侧边栏**：活动栏图标 → Stock / Crypto / Settings 三个视图
-- **状态栏**：实时行情概览
-- 美股（Finnhub）+ 加密货币（Binance）
-- 涨跌箭头、涨跌幅、价格展示
-- 工具栏：刷新、添加
-- 右键删除自选
+- **多数据源**：东方财富 / 新浪 / 腾讯 / Finnhub / 自动回退
+- **盘前盘后**：新浪、东财、Finnhub 延长时段支持
+- **侧边栏**：Stock / Crypto / Settings
+- **界面切换数据源**：Settings → 切换美股数据源
 
-## 界面
+## 美股数据源
 
-```
-活动栏 [📈]
-├── Stock
-│   └── US Stock(3)
-│       ├── [AAPL]  +1.23%  185.50
-│       ├── [NVDA]  -0.45%  890.12
-│       └── [TSLA]  +2.10%  250.30
-├── Crypto
-│   └── Crypto(1)
-│       └── [BTC]   +0.85%  97,500.00
-└── Settings
-    ├── 刷新行情
-    ├── 添加美股
-    ├── 添加加密货币
-    └── 打开设置
+| 数据源 | API Key | 盘前盘后 | 说明 |
+|--------|---------|---------|------|
+| 自动（默认） | 可选 | ✅ | 东财→新浪→腾讯→Finnhub |
+| 东方财富 | 不需要 | ✅ | 国内访问友好 |
+| 新浪财经 | 不需要 | ✅ | LeekFund 同款逻辑 |
+| 腾讯财经 | 不需要 | ✅ | 国内稳定 |
+| Finnhub 盘前盘后 | 需要 | ✅ | `trade=true` |
+| Finnhub 盘中 | 需要 | ❌ | 仅常规时段 |
+
+## 切换数据源
+
+### 方式一：侧边栏（推荐）
+
+1. 打开左侧 **看盘插件** 图标
+2. 进入 **Settings**
+3. 点击 **切换美股数据源**
+4. 在列表中选择
+
+Stock 视图标题栏也有数据源切换按钮。
+
+### 方式二：设置
+
+```json
+{
+  "kanpan.stockDataSource": "auto",
+  "kanpan.autoFallbackOrder": ["eastmoney", "sina", "tencent", "finnhubExtended", "finnhub"],
+  "kanpan.finnhubApiKey": ""
+}
 ```
 
 ## 安装
-
-### 本地调试
 
 ```bash
 cd 看盘插件
@@ -42,36 +49,7 @@ npm install
 npm run compile
 ```
 
-用 Cursor 打开 `看盘插件` 文件夹，按 `F5`。
-
-### 安装 VSIX
-
-```bash
-npm run package
-```
-
-扩展面板 → `...` → **从 VSIX 安装**
-
-## 配置
-
-```json
-{
-  "kanpan.stocks": ["AAPL", "NVDA", "TSLA"],
-  "kanpan.cryptoSymbols": ["BTCUSDT"],
-  "kanpan.finnhubApiKey": "你的Finnhub密钥"
-}
-```
-
-- 美股 API Key：https://finnhub.io （免费 60 次/分钟）
-- 加密货币：Binance 公开接口，无需 Key
-
-## 参考开源
-
-| 项目 | 借鉴 |
-|------|------|
-| [LeekHub/leek-fund](https://github.com/LeekHub/leek-fund) | 侧边栏 TreeView、分组、工具栏 |
-| US Stock Bar | Finnhub 美股 API |
-| CryptoTickerPlus | Binance 加密货币 API |
+F5 调试，或 `npm run package` 生成 VSIX 安装。
 
 ## License
 

@@ -33,7 +33,6 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchStockQuote = fetchStockQuote;
 exports.fetchCryptoQuote = fetchCryptoQuote;
 exports.defaultSymbolLabel = defaultSymbolLabel;
 exports.formatPrice = formatPrice;
@@ -56,27 +55,6 @@ function httpGet(url) {
         })
             .on('error', reject);
     });
-}
-/** Finnhub quote API - same approach as US Stock Bar */
-async function fetchStockQuote(symbol, apiKey) {
-    if (!apiKey) {
-        throw new Error('请配置 kanpan.finnhubApiKey');
-    }
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(apiKey)}`;
-    const body = await httpGet(url);
-    const json = JSON.parse(body);
-    if (json.c === 0 && json.pc === 0) {
-        throw new Error(`无 ${symbol} 数据，请检查代码是否正确`);
-    }
-    return {
-        symbol,
-        price: json.c,
-        changePercent: json.dp ?? 0,
-        previousClose: json.pc,
-        high: json.h,
-        low: json.l,
-        open: json.o,
-    };
 }
 /** Binance 24hr ticker - same approach as CryptoTickerPlus */
 async function fetchCryptoQuote(symbol) {

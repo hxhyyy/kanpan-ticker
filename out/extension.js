@@ -39,6 +39,7 @@ const vscode = __importStar(require("vscode"));
 const marketService_1 = require("./marketService");
 const treeProviders_1 = require("./sidebar/treeProviders");
 function activate(context) {
+    (0, treeProviders_1.bindExtensionContext)(context);
     const store = new marketService_1.MarketStore();
     const marketService = new marketService_1.MarketService(context, store);
     const stockProvider = new treeProviders_1.StockTreeProvider(store);
@@ -60,6 +61,10 @@ function activate(context) {
         }
     }), vscode.commands.registerCommand('kanpan.openSettings', () => {
         vscode.commands.executeCommand('workbench.action.openSettings', 'kanpan');
+    }), vscode.commands.registerCommand('kanpan.selectStockSource', async () => {
+        await marketService.selectStockSource();
+        stockProvider.refresh();
+        settingsProvider.refresh();
     }), vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration('kanpan')) {
             marketService.start();

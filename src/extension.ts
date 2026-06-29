@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { MarketService, MarketStore } from './marketService';
-import { CryptoTreeProvider, SettingsTreeProvider, StockTreeProvider } from './sidebar/treeProviders';
+import { bindExtensionContext, CryptoTreeProvider, SettingsTreeProvider, StockTreeProvider } from './sidebar/treeProviders';
 
 export function activate(context: vscode.ExtensionContext): void {
+  bindExtensionContext(context);
   const store = new MarketStore();
   const marketService = new MarketService(context, store);
 
@@ -37,6 +38,11 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('kanpan.openSettings', () => {
       vscode.commands.executeCommand('workbench.action.openSettings', 'kanpan');
+    }),
+    vscode.commands.registerCommand('kanpan.selectStockSource', async () => {
+      await marketService.selectStockSource();
+      stockProvider.refresh();
+      settingsProvider.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('kanpan')) {

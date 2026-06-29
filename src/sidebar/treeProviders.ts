@@ -1,6 +1,21 @@
 import * as vscode from 'vscode';
 import { formatChangePercent, formatPrice } from '../providers';
-import { getDisplayLabel, MarketStore, marketKeyOf } from '../marketService';
+import { getDisplayLabel, getConfig, getStockDataSource, MarketStore, marketKeyOf } from '../marketService';
+import { sessionLabel } from '../session';
+import { formatQuoteTooltip, getStockSourceLabel } from '../stockSources';
+
+let extensionContext: vscode.ExtensionContext | undefined;
+
+export function bindExtensionContext(context: vscode.ExtensionContext): void {
+  extensionContext = context;
+}
+
+function currentStockSourceLabel(): string {
+  if (!extensionContext) {
+    return getStockSourceLabel('auto');
+  }
+  return getStockSourceLabel(getStockDataSource(extensionContext));
+}
 
 export class KanpanTreeItem extends vscode.TreeItem {
   constructor(
@@ -65,18 +80,11 @@ function buildQuoteTreeItem(
   const changeText = formatChangePercent(quote.changePercent);
   const priceText = formatPrice(quote.price);
   const iconId = quote.changePercent >= 0 ? 'arrow-up' : 'arrow-down';
+  const sessionText = quote.session ? sessionLabel(quote.session) : '';
 
   return new KanpanTreeItem(key, `[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
-    description: `${changeText}  ${priceText}`,
-    tooltip: [
-      symbol,
-      `现价: ${priceText}`,
-      `涨跌: ${changeText}`,
-      `开盘: ${formatPrice(quote.open)}`,
-      `最高: ${formatPrice(quote.high)}`,
-      `最低: ${formatPrice(quote.low)}`,
-      `昨收: ${formatPrice(quote.previousClose)}`,
-    ].join('\n'),
+    description: sessionText ? `${changeText}  ${priceText}  ${sessionText}` : `${changeText}  ${priceText}`,
+    tooltip: formatQuoteTooltip(quote),
     iconId,
     contextValue: type === 'stock' ? 'usStock' : 'crypto',
   });
@@ -99,8 +107,9 @@ export class StockTreeProvider implements vscode.TreeDataProvider<KanpanTreeItem
   }
 
   getChildren(element?: KanpanTreeItem): KanpanTreeItem[] {
-    const config = vscode.workspace.getConfiguration('kanpan');
+    const config = getConfig();
     const stocks = config.get<string[]>('stocks', ['AAPL', 'NVDA', 'TSLA']).map((s) => s.toUpperCase());
+    const source = currentStockSourceLabel();
 
     if (!element) {
       const count = stocks.length;
@@ -109,7 +118,12 @@ export class StockTreeProvider implements vscode.TreeDataProvider<KanpanTreeItem
           'us-group',
           `US Stock(${count})`,
           stocks.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
-          { contextValue: 'stockGroup', iconId: 'graph' }
+          {
+            contextValue: 'stockGroup',
+            iconId: 'graph',
+            description: source,
+            tooltip: `当前数据源: ${source}\n在 Settings 中可切换数据源`,
+          }
         ),
       ];
     }
@@ -156,7 +170,7 @@ export class CryptoTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
           'crypto-group',
           `Crypto(${count})`,
           symbols.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
-          { contextValue: 'cryptoGroup', iconId: 'symbol-bitcoin' }
+          { contextValue: 'cryptoGroup', iconId: 'symbol-bitcoin', description: 'Binance' }
         ),
       ];
     }
@@ -189,7 +203,15 @@ export class SettingsTreeProvider implements vscode.TreeDataProvider<KanpanTreeI
   }
 
   getChildren(): KanpanTreeItem[] {
+    const source = currentStockSourceLabel();
+
     return [
+      new KanpanTreeItem('settings-source', '切换美股数据源', vscode.TreeItemCollapsibleState.None, {
+        iconId: 'server-environment',
+        description: source,
+        tooltip: `当前: ${source}\n点击选择 Finnhub / 东财 / 新浪 / 腾讯 / 自动`,
+        command: { command: 'kanpan.selectStockSource', title: '切换数据源' },
+      }),
       new KanpanTreeItem('settings-refresh', '刷新行情', vscode.TreeItemCollapsibleState.None, {
         iconId: 'refresh',
         command: { command: 'kanpan.refresh', title: '刷新' },

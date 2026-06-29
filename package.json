@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "看盘插件",
   "description": "在 VS Code / Cursor 状态栏和侧边栏查看美股和比特币实时价格",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -83,6 +83,11 @@
         "icon": "$(trash)"
       },
       {
+        "command": "kanpan.selectStockSource",
+        "title": "看盘插件: 切换美股数据源",
+        "icon": "$(server-environment)"
+      },
+      {
         "command": "kanpan.openSettings",
         "title": "打开设置",
         "icon": "$(settings-gear)"
@@ -103,6 +108,11 @@
         {
           "command": "kanpan.addCrypto",
           "when": "view == kanpanView.crypto",
+          "group": "navigation"
+        },
+        {
+          "command": "kanpan.selectStockSource",
+          "when": "view == kanpanView.stock || view == kanpanView.settings",
           "group": "navigation"
         }
       ],
@@ -125,7 +135,26 @@
         "kanpan.stocks": {
           "type": "array",
           "default": ["AAPL", "NVDA", "TSLA"],
-          "description": "要监控的美股代码（Finnhub）"
+          "description": "要监控的美股代码"
+        },
+        "kanpan.stockDataSource": {
+          "type": "string",
+          "enum": ["auto", "eastmoney", "sina", "tencent", "finnhubExtended", "finnhub"],
+          "enumDescriptions": [
+            "按优先级自动回退",
+            "东方财富（免 Key，盘前盘后）",
+            "新浪财经（免 Key，LeekFund 同款）",
+            "腾讯财经（免 Key）",
+            "Finnhub 盘前盘后（需 Key）",
+            "Finnhub 盘中（需 Key）"
+          ],
+          "default": "auto",
+          "description": "美股行情数据源"
+        },
+        "kanpan.autoFallbackOrder": {
+          "type": "array",
+          "default": ["eastmoney", "sina", "tencent", "finnhubExtended", "finnhub"],
+          "description": "自动模式下的数据源优先级"
         },
         "kanpan.cryptoSymbols": {
           "type": "array",
@@ -135,7 +164,7 @@
         "kanpan.finnhubApiKey": {
           "type": "string",
           "default": "",
-          "description": "Finnhub API Key（美股必需，免费注册 https://finnhub.io）"
+          "description": "Finnhub API Key（使用 Finnhub 数据源时需要，https://finnhub.io）"
         },
         "kanpan.refreshInterval": {
           "type": "number",
@@ -191,6 +220,9 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package --allow-missing-repository"
+  },
+  "dependencies": {
+    "iconv-lite": "^0.6.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
