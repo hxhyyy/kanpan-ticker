@@ -381,17 +381,31 @@ export function formatQuoteTooltip(quote: QuoteData): string {
     `最低: ${formatPrice(quote.low)}`,
     `昨收: ${formatPrice(quote.previousClose)}`,
   ];
-  const currentVolume = quote.volume && quote.volume > 0 ? quote.volume : undefined;
-  if (currentVolume) {
-    lines.push(`成交量: ${formatVolume(currentVolume)}`);
+  const intradayVolume = quote.volume && quote.volume > 0 ? quote.volume : undefined;
+  const fallbackDailyVolume = quote.latestVolume && quote.latestVolume > 0 ? quote.latestVolume : undefined;
+  const compareVolume = intradayVolume ?? fallbackDailyVolume;
+  if (intradayVolume) {
+    lines.push(`成交量: ${formatVolume(intradayVolume)}`);
+  } else if (fallbackDailyVolume) {
+    lines.push(`昨成交量: ${formatVolume(fallbackDailyVolume)}`);
   }
   if (quote.avgVolume5 && quote.avgVolume5 > 0) {
-    const ratioText = currentVolume ? formatVolumeRatio(currentVolume, quote.avgVolume5) : undefined;
-    lines.push(ratioText ? `5日均量: ${formatVolume(quote.avgVolume5)} (今/5日 ${ratioText})` : `5日均量: ${formatVolume(quote.avgVolume5)}`);
+    const ratioText = compareVolume ? formatVolumeRatio(compareVolume, quote.avgVolume5) : undefined;
+    const prefix = intradayVolume ? '今' : fallbackDailyVolume ? '昨' : undefined;
+    lines.push(
+      ratioText && prefix
+        ? `5日均量: ${formatVolume(quote.avgVolume5)} (${prefix}/5日 ${ratioText})`
+        : `5日均量: ${formatVolume(quote.avgVolume5)}`
+    );
   }
   if (quote.avgVolume20 && quote.avgVolume20 > 0) {
-    const ratioText = currentVolume ? formatVolumeRatio(currentVolume, quote.avgVolume20) : undefined;
-    lines.push(ratioText ? `20日均量: ${formatVolume(quote.avgVolume20)} (今/20日 ${ratioText})` : `20日均量: ${formatVolume(quote.avgVolume20)}`);
+    const ratioText = compareVolume ? formatVolumeRatio(compareVolume, quote.avgVolume20) : undefined;
+    const prefix = intradayVolume ? '今' : fallbackDailyVolume ? '昨' : undefined;
+    lines.push(
+      ratioText && prefix
+        ? `20日均量: ${formatVolume(quote.avgVolume20)} (${prefix}/20日 ${ratioText})`
+        : `20日均量: ${formatVolume(quote.avgVolume20)}`
+    );
   }
   if (quote.quoteVolume && quote.quoteVolume > 0) {
     lines.push(`成交额: ${formatVolume(quote.quoteVolume)}`);

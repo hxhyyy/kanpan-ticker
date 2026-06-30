@@ -190,6 +190,7 @@ export class MarketStore {
       ...quote,
       avgVolume5: stats.avg5,
       avgVolume20: stats.avg20,
+      latestVolume: stats.latestVolume,
     };
   }
 

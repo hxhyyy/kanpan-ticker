@@ -334,17 +334,28 @@ function formatQuoteTooltip(quote) {
         `最低: ${(0, providers_1.formatPrice)(quote.low)}`,
         `昨收: ${(0, providers_1.formatPrice)(quote.previousClose)}`,
     ];
-    const currentVolume = quote.volume && quote.volume > 0 ? quote.volume : undefined;
-    if (currentVolume) {
-        lines.push(`成交量: ${(0, providers_1.formatVolume)(currentVolume)}`);
+    const intradayVolume = quote.volume && quote.volume > 0 ? quote.volume : undefined;
+    const fallbackDailyVolume = quote.latestVolume && quote.latestVolume > 0 ? quote.latestVolume : undefined;
+    const compareVolume = intradayVolume ?? fallbackDailyVolume;
+    if (intradayVolume) {
+        lines.push(`成交量: ${(0, providers_1.formatVolume)(intradayVolume)}`);
+    }
+    else if (fallbackDailyVolume) {
+        lines.push(`昨成交量: ${(0, providers_1.formatVolume)(fallbackDailyVolume)}`);
     }
     if (quote.avgVolume5 && quote.avgVolume5 > 0) {
-        const ratioText = currentVolume ? (0, volumeStats_1.formatVolumeRatio)(currentVolume, quote.avgVolume5) : undefined;
-        lines.push(ratioText ? `5日均量: ${(0, providers_1.formatVolume)(quote.avgVolume5)} (今/5日 ${ratioText})` : `5日均量: ${(0, providers_1.formatVolume)(quote.avgVolume5)}`);
+        const ratioText = compareVolume ? (0, volumeStats_1.formatVolumeRatio)(compareVolume, quote.avgVolume5) : undefined;
+        const prefix = intradayVolume ? '今' : fallbackDailyVolume ? '昨' : undefined;
+        lines.push(ratioText && prefix
+            ? `5日均量: ${(0, providers_1.formatVolume)(quote.avgVolume5)} (${prefix}/5日 ${ratioText})`
+            : `5日均量: ${(0, providers_1.formatVolume)(quote.avgVolume5)}`);
     }
     if (quote.avgVolume20 && quote.avgVolume20 > 0) {
-        const ratioText = currentVolume ? (0, volumeStats_1.formatVolumeRatio)(currentVolume, quote.avgVolume20) : undefined;
-        lines.push(ratioText ? `20日均量: ${(0, providers_1.formatVolume)(quote.avgVolume20)} (今/20日 ${ratioText})` : `20日均量: ${(0, providers_1.formatVolume)(quote.avgVolume20)}`);
+        const ratioText = compareVolume ? (0, volumeStats_1.formatVolumeRatio)(compareVolume, quote.avgVolume20) : undefined;
+        const prefix = intradayVolume ? '今' : fallbackDailyVolume ? '昨' : undefined;
+        lines.push(ratioText && prefix
+            ? `20日均量: ${(0, providers_1.formatVolume)(quote.avgVolume20)} (${prefix}/20日 ${ratioText})`
+            : `20日均量: ${(0, providers_1.formatVolume)(quote.avgVolume20)}`);
     }
     if (quote.quoteVolume && quote.quoteVolume > 0) {
         lines.push(`成交额: ${(0, providers_1.formatVolume)(quote.quoteVolume)}`);

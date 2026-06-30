@@ -31,6 +31,23 @@ function httpGet(url: string): Promise<string> {
   });
 }
 
+async function httpGetWithRetry(url: string, retries = 2): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await httpGet(url);
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries) {
+        break;
+      }
+      // 短暂退避，规避偶发连接重置
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 function eastMoneySecId(type: VolumeStatsMarketType, symbol: string): string {
   if (type === 'stock') {
     return `105.${symbol.toUpperCase()}`;
@@ -69,7 +86,7 @@ async function fetchStockVolumeStats(type: 'stock' | 'ashare', symbol: string): 
     '&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13' +
     '&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61';
 
-  const body = await httpGet(url);
+  const body = await httpGetWithRetry(url);
   const json = JSON.parse(body) as { data?: { klines?: string[] } };
   const klines = json.data?.klines;
   if (!klines || klines.length < 6) {
@@ -93,13 +110,46 @@ async function fetchStockVolumeStats(type: 'stock' | 'ashare', symbol: string): 
   return { avg5, avg20, latestVolume };
 }
 
+async function fetchUsStockVolumeStatsFromYahoo(symbol: string): Promise<VolumeStats | undefined> {
+  const url =
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol.toUpperCase())}` +
+    '?interval=1d&range=3mo';
+  const body = await httpGetWithRetry(url);
+  const json = JSON.parse(body) as {
+    chart?: {
+      result?: Array<{
+        indicators?: {
+          quote?: Array<{
+            volume?: Array<number | null>;
+          }>;
+        };
+      }>;
+    };
+  };
+  const rawVolumes = json.chart?.result?.[0]?.indicators?.quote?.[0]?.volume ?? [];
+  const volumes = rawVolumes
+    .map((v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0))
+    .filter((v) => v > 0);
+  if (volumes.length < 6) {
+    return undefined;
+  }
+  const latestVolume = volumes[volumes.length - 1];
+  const history = volumes.slice(0, -1);
+  const avg5 = average(history.slice(-5));
+  const avg20 = average(history.slice(-20));
+  if (avg5 <= 0 || avg20 <= 0) {
+    return undefined;
+  }
+  return { avg5, avg20, latestVolume };
+}
+
 /** 从 Binance 日 K 线拉取历史成交量，计算 5/20 日均量 */
 async function fetchCryptoVolumeStats(symbol: string): Promise<VolumeStats | undefined> {
   const url =
     `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol.toUpperCase())}` +
     '&interval=1d&limit=22';
 
-  const body = await httpGet(url);
+  const body = await httpGetWithRetry(url);
   const klines = JSON.parse(body) as Array<[number, string, string, string, string, string, number, string, ...unknown[]]>;
   if (!Array.isArray(klines) || klines.length < 6) {
     return undefined;
@@ -129,7 +179,18 @@ export async function fetchVolumeStats(type: VolumeStatsMarketType, symbol: stri
     return fetchCryptoVolumeStats(symbol);
   }
   if (type === 'stock' || type === 'ashare') {
-    return fetchStockVolumeStats(type, symbol);
+    try {
+      const stats = await fetchStockVolumeStats(type, symbol);
+      if (stats) {
+        return stats;
+      }
+    } catch {
+      // 继续走回退数据源
+    }
+    if (type === 'stock') {
+      return fetchUsStockVolumeStatsFromYahoo(symbol);
+    }
+    return undefined;
   }
   return undefined;
 }

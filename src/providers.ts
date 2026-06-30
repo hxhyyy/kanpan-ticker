@@ -11,6 +11,8 @@ export interface QuoteData {
   open: number;
   /** 成交量（股/币数量） */
   volume?: number;
+  /** 最近一个完整交易日成交量（用于盘前/盘后对比均量） */
+  latestVolume?: number;
   /** 成交额（USD/USDT 等计价货币） */
   quoteVolume?: number;
   /** 5 个交易日日均成交量（不含当日） */
