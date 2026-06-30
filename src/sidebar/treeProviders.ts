@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { coloredTrendIcon, getColorSchemeLabel, getRiseFallColors, shouldUseNeutralColors } from '../colorSettings';
 import { quoteDecorationUri } from '../quoteDecoration';
-import { formatChangePercent, formatPrice, formatVolumeDetail } from '../providers';
+import { formatChangePercent, formatPrice } from '../providers';
 import { normalizeAShareCode } from '../aShareSources';
 import { getDisplayLabel, getConfig, getStockDataSource, getStatusBarItems, MarketStore, marketKeyOf, MarketType } from '../marketService';
 import { sessionLabel } from '../session';
@@ -107,8 +107,6 @@ function buildQuoteTreeItem(type: MarketType, symbol: string, store: MarketStore
     ? new vscode.ThemeIcon(up ? 'arrow-up' : 'arrow-down')
     : coloredTrendIcon(up, trendColor);
   const sessionText = quote.session ? sessionLabel(quote.session) : '';
-  const showVolume = getConfig().get<boolean>('showVolume', true);
-  const volumeText = showVolume && type === 'crypto' ? formatVolumeDetail(quote) : undefined;
 
   const descParts: string[] = [];
   if (showChangePercent) {
@@ -117,9 +115,6 @@ function buildQuoteTreeItem(type: MarketType, symbol: string, store: MarketStore
   descParts.push(priceText);
   if (sessionText && type !== 'ashare') {
     descParts.push(sessionText);
-  }
-  if (volumeText) {
-    descParts.push(volumeText);
   }
 
   const decorationUri =

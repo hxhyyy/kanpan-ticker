@@ -58,13 +58,27 @@ function httpGet(url) {
             .on('error', reject);
     });
 }
+const CRYPTO_DISPLAY_NAMES = {
+    BTCUSDT: 'Bitcoin',
+    ETHUSDT: 'Ethereum',
+    BNBUSDT: 'BNB',
+    SOLUSDT: 'Solana',
+    XRPUSDT: 'XRP',
+    DOGEUSDT: 'Dogecoin',
+};
+function cryptoDisplayName(symbol) {
+    const upper = symbol.toUpperCase();
+    return CRYPTO_DISPLAY_NAMES[upper] ?? upper.replace(/USDT$|BUSD$|USD$/, '');
+}
 /** Binance 24hr ticker - same approach as CryptoTickerPlus */
 async function fetchCryptoQuote(symbol) {
-    const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(symbol)}`;
+    const upper = symbol.toUpperCase();
+    const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(upper)}`;
     const body = await httpGet(url);
     const json = JSON.parse(body);
     return {
-        symbol,
+        symbol: upper,
+        name: cryptoDisplayName(upper),
         price: parseFloat(json.lastPrice),
         changePercent: parseFloat(json.priceChangePercent),
         previousClose: parseFloat(json.prevClosePrice || json.openPrice),
@@ -73,6 +87,7 @@ async function fetchCryptoQuote(symbol) {
         open: parseFloat(json.openPrice),
         volume: parseFloat(json.volume),
         quoteVolume: parseFloat(json.quoteVolume),
+        dataSource: 'Binance',
     };
 }
 function defaultSymbolLabel(symbol) {

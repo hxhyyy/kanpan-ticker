@@ -6,7 +6,6 @@ import {
   formatPrice,
   QuoteData,
   renderFormat,
-  formatVolumeDetail,
 } from './providers';
 import {
   fetchStockQuoteBySource,
@@ -36,6 +35,7 @@ import {
   writeWatchList,
 } from './sidebar/reorder';
 import { sessionLabel } from './session';
+import { fetchVolumeStats } from './volumeStats';
 
 export type MarketType = 'stock' | 'crypto' | 'ashare';
 
@@ -149,7 +149,10 @@ export function getDisplayLabel(symbol: string, name?: string): string {
 
 export class MarketStore {
   private readonly cache = new Map<string, CachedEntry>();
+  private readonly volumeStatsCache = new Map<string, { stats: Awaited<ReturnType<typeof fetchVolumeStats>>; fetchedAt: number }>();
   private readonly listeners = new Set<() => void>();
+
+  private static readonly VOLUME_STATS_TTL_MS = 30 * 60 * 1000;
 
   onUpdate(listener: () => void): vscode.Disposable {
     this.listeners.add(listener);
@@ -162,6 +165,32 @@ export class MarketStore {
 
   setQuote(key: string, quote: QuoteData): void {
     this.cache.set(key, { quote });
+  }
+
+  async enrichQuoteWithVolumeStats(type: MarketType, symbol: string, quote: QuoteData): Promise<QuoteData> {
+    const key = marketKeyOf(type, symbol);
+    const now = Date.now();
+    const cached = this.volumeStatsCache.get(key);
+    let stats = cached && now - cached.fetchedAt < MarketStore.VOLUME_STATS_TTL_MS ? cached.stats : undefined;
+
+    if (!stats) {
+      try {
+        stats = await fetchVolumeStats(type, symbol);
+        this.volumeStatsCache.set(key, { stats, fetchedAt: now });
+      } catch {
+        stats = undefined;
+      }
+    }
+
+    if (!stats) {
+      return quote;
+    }
+
+    return {
+      ...quote,
+      avgVolume5: stats.avg5,
+      avgVolume20: stats.avg20,
+    };
   }
 
   setError(key: string, error: string): void {
@@ -590,7 +619,8 @@ export class MarketService {
           : type === 'ashare'
             ? await fetchAShareQuote(symbol)
             : await fetchCryptoQuote(symbol);
-      this.store.setQuote(key, quote);
+      const enriched = await this.store.enrichQuoteWithVolumeStats(type, symbol, quote);
+      this.store.setQuote(key, enriched);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.store.setError(key, message);
@@ -609,7 +639,6 @@ export class MarketService {
     const showChangePercent = config.get<boolean>('showChangePercent', true);
     const { rise: riseColor, fall: fallColor } = getRiseFallColors(config);
     const format = config.get<string>('format', '{symbol} {price} {change} {icon}');
-    const showVolume = config.get<boolean>('showVolume', true);
 
     for (const item of this.statusItems) {
       const cached = this.store.get(item.key);
@@ -636,14 +665,7 @@ export class MarketService {
       const changeText = formatChangePercent(quote.changePercent);
 
       item.statusBarItem.text = showChangePercent
-        ? renderFormat(
-            format,
-            label,
-            quote.price,
-            quote.changePercent,
-            !monochrome,
-            showVolume && item.type === 'crypto' ? formatVolumeDetail(quote) : undefined
-          )
+        ? renderFormat(format, label, quote.price, quote.changePercent, !monochrome)
         : `${label} ${priceText}`;
 
       applyStatusBarItemColors(item.statusBarItem, quote.changePercent, monochrome, riseColor, fallColor);

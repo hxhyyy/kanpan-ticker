@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.5.2",
+  "version": "0.5.4",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -379,7 +379,7 @@
         "kanpan.showVolume": {
           "type": "boolean",
           "default": true,
-          "description": "在侧边栏和状态栏显示加密货币成交量（量:），美股和 A 股不显示"
+          "description": "保留配置项（当前版本成交量仅在悬浮详情中显示）"
         },
         "kanpan.aliases": {
           "type": "object",

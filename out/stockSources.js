@@ -45,6 +45,7 @@ const http = __importStar(require("http"));
 const https = __importStar(require("https"));
 const iconv = __importStar(require("iconv-lite"));
 const providers_1 = require("./providers");
+const volumeStats_1 = require("./volumeStats");
 const session_1 = require("./session");
 exports.STOCK_SOURCE_OPTIONS = [
     {
@@ -333,8 +334,17 @@ function formatQuoteTooltip(quote) {
         `最低: ${(0, providers_1.formatPrice)(quote.low)}`,
         `昨收: ${(0, providers_1.formatPrice)(quote.previousClose)}`,
     ];
-    if (quote.volume && quote.volume > 0) {
-        lines.push(`成交量: ${(0, providers_1.formatVolume)(quote.volume)}`);
+    const currentVolume = quote.volume && quote.volume > 0 ? quote.volume : undefined;
+    if (currentVolume) {
+        lines.push(`成交量: ${(0, providers_1.formatVolume)(currentVolume)}`);
+    }
+    if (quote.avgVolume5 && quote.avgVolume5 > 0) {
+        const ratioText = currentVolume ? (0, volumeStats_1.formatVolumeRatio)(currentVolume, quote.avgVolume5) : undefined;
+        lines.push(ratioText ? `5日均量: ${(0, providers_1.formatVolume)(quote.avgVolume5)} (今/5日 ${ratioText})` : `5日均量: ${(0, providers_1.formatVolume)(quote.avgVolume5)}`);
+    }
+    if (quote.avgVolume20 && quote.avgVolume20 > 0) {
+        const ratioText = currentVolume ? (0, volumeStats_1.formatVolumeRatio)(currentVolume, quote.avgVolume20) : undefined;
+        lines.push(ratioText ? `20日均量: ${(0, providers_1.formatVolume)(quote.avgVolume20)} (今/20日 ${ratioText})` : `20日均量: ${(0, providers_1.formatVolume)(quote.avgVolume20)}`);
     }
     if (quote.quoteVolume && quote.quoteVolume > 0) {
         lines.push(`成交额: ${(0, providers_1.formatVolume)(quote.quoteVolume)}`);

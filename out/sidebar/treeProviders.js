@@ -125,8 +125,6 @@ function buildQuoteTreeItem(type, symbol, store) {
         ? new vscode.ThemeIcon(up ? 'arrow-up' : 'arrow-down')
         : (0, colorSettings_1.coloredTrendIcon)(up, trendColor);
     const sessionText = quote.session ? (0, session_1.sessionLabel)(quote.session) : '';
-    const showVolume = (0, marketService_1.getConfig)().get('showVolume', true);
-    const volumeText = showVolume && type === 'crypto' ? (0, providers_1.formatVolumeDetail)(quote) : undefined;
     const descParts = [];
     if (showChangePercent) {
         descParts.push(changeText);
@@ -134,9 +132,6 @@ function buildQuoteTreeItem(type, symbol, store) {
     descParts.push(priceText);
     if (sessionText && type !== 'ashare') {
         descParts.push(sessionText);
-    }
-    if (volumeText) {
-        descParts.push(volumeText);
     }
     const decorationUri = showChangePercent && !monochrome ? (0, quoteDecoration_1.quoteDecorationUri)(key, quote.changePercent) : undefined;
     return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {

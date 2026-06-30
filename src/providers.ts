@@ -13,6 +13,10 @@ export interface QuoteData {
   volume?: number;
   /** 成交额（USD/USDT 等计价货币） */
   quoteVolume?: number;
+  /** 5 个交易日日均成交量（不含当日） */
+  avgVolume5?: number;
+  /** 20 个交易日日均成交量（不含当日） */
+  avgVolume20?: number;
   dataSource?: string;
   session?: MarketSession;
   name?: string;
@@ -36,9 +40,24 @@ function httpGet(url: string): Promise<string> {
   });
 }
 
+const CRYPTO_DISPLAY_NAMES: Record<string, string> = {
+  BTCUSDT: 'Bitcoin',
+  ETHUSDT: 'Ethereum',
+  BNBUSDT: 'BNB',
+  SOLUSDT: 'Solana',
+  XRPUSDT: 'XRP',
+  DOGEUSDT: 'Dogecoin',
+};
+
+function cryptoDisplayName(symbol: string): string {
+  const upper = symbol.toUpperCase();
+  return CRYPTO_DISPLAY_NAMES[upper] ?? upper.replace(/USDT$|BUSD$|USD$/, '');
+}
+
 /** Binance 24hr ticker - same approach as CryptoTickerPlus */
 export async function fetchCryptoQuote(symbol: string): Promise<QuoteData> {
-  const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(symbol)}`;
+  const upper = symbol.toUpperCase();
+  const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(upper)}`;
   const body = await httpGet(url);
   const json = JSON.parse(body) as {
     symbol: string;
@@ -53,7 +72,8 @@ export async function fetchCryptoQuote(symbol: string): Promise<QuoteData> {
   };
 
   return {
-    symbol,
+    symbol: upper,
+    name: cryptoDisplayName(upper),
     price: parseFloat(json.lastPrice),
     changePercent: parseFloat(json.priceChangePercent),
     previousClose: parseFloat(json.prevClosePrice || json.openPrice),
@@ -62,6 +82,7 @@ export async function fetchCryptoQuote(symbol: string): Promise<QuoteData> {
     open: parseFloat(json.openPrice),
     volume: parseFloat(json.volume),
     quoteVolume: parseFloat(json.quoteVolume),
+    dataSource: 'Binance',
   };
 }
 

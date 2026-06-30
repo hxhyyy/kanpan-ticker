@@ -2,6 +2,7 @@ import * as http from 'http';
 import * as https from 'https';
 import * as iconv from 'iconv-lite';
 import { formatPrice, formatVolume, QuoteData } from './providers';
+import { formatVolumeRatio } from './volumeStats';
 import { getUsMarketSession, MarketSession, sessionLabel } from './session';
 
 export type StockDataSourceId =
@@ -380,8 +381,17 @@ export function formatQuoteTooltip(quote: QuoteData): string {
     `最低: ${formatPrice(quote.low)}`,
     `昨收: ${formatPrice(quote.previousClose)}`,
   ];
-  if (quote.volume && quote.volume > 0) {
-    lines.push(`成交量: ${formatVolume(quote.volume)}`);
+  const currentVolume = quote.volume && quote.volume > 0 ? quote.volume : undefined;
+  if (currentVolume) {
+    lines.push(`成交量: ${formatVolume(currentVolume)}`);
+  }
+  if (quote.avgVolume5 && quote.avgVolume5 > 0) {
+    const ratioText = currentVolume ? formatVolumeRatio(currentVolume, quote.avgVolume5) : undefined;
+    lines.push(ratioText ? `5日均量: ${formatVolume(quote.avgVolume5)} (今/5日 ${ratioText})` : `5日均量: ${formatVolume(quote.avgVolume5)}`);
+  }
+  if (quote.avgVolume20 && quote.avgVolume20 > 0) {
+    const ratioText = currentVolume ? formatVolumeRatio(currentVolume, quote.avgVolume20) : undefined;
+    lines.push(ratioText ? `20日均量: ${formatVolume(quote.avgVolume20)} (今/20日 ${ratioText})` : `20日均量: ${formatVolume(quote.avgVolume20)}`);
   }
   if (quote.quoteVolume && quote.quoteVolume > 0) {
     lines.push(`成交额: ${formatVolume(quote.quoteVolume)}`);

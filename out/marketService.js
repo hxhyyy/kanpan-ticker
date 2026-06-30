@@ -49,6 +49,7 @@ const stockSources_1 = require("./stockSources");
 const aShareSources_1 = require("./aShareSources");
 const colorSettings_1 = require("./colorSettings");
 const reorder_1 = require("./sidebar/reorder");
+const volumeStats_1 = require("./volumeStats");
 function marketKeyOf(type, symbol) {
     if (type === 'ashare') {
         return `${type}:${(0, aShareSources_1.normalizeAShareCode)(symbol)}`;
@@ -135,6 +136,7 @@ function getDisplayLabel(symbol, name) {
 class MarketStore {
     constructor() {
         this.cache = new Map();
+        this.volumeStatsCache = new Map();
         this.listeners = new Set();
     }
     onUpdate(listener) {
@@ -147,6 +149,29 @@ class MarketStore {
     setQuote(key, quote) {
         this.cache.set(key, { quote });
     }
+    async enrichQuoteWithVolumeStats(type, symbol, quote) {
+        const key = marketKeyOf(type, symbol);
+        const now = Date.now();
+        const cached = this.volumeStatsCache.get(key);
+        let stats = cached && now - cached.fetchedAt < MarketStore.VOLUME_STATS_TTL_MS ? cached.stats : undefined;
+        if (!stats) {
+            try {
+                stats = await (0, volumeStats_1.fetchVolumeStats)(type, symbol);
+                this.volumeStatsCache.set(key, { stats, fetchedAt: now });
+            }
+            catch {
+                stats = undefined;
+            }
+        }
+        if (!stats) {
+            return quote;
+        }
+        return {
+            ...quote,
+            avgVolume5: stats.avg5,
+            avgVolume20: stats.avg20,
+        };
+    }
     setError(key, error) {
         this.cache.set(key, { error });
     }
@@ -157,6 +182,7 @@ class MarketStore {
     }
 }
 exports.MarketStore = MarketStore;
+MarketStore.VOLUME_STATS_TTL_MS = 30 * 60 * 1000;
 class MarketService {
     constructor(context, store) {
         this.context = context;
@@ -483,7 +509,8 @@ class MarketService {
                 : type === 'ashare'
                     ? await (0, aShareSources_1.fetchAShareQuote)(symbol)
                     : await (0, providers_1.fetchCryptoQuote)(symbol);
-            this.store.setQuote(key, quote);
+            const enriched = await this.store.enrichQuoteWithVolumeStats(type, symbol, quote);
+            this.store.setQuote(key, enriched);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -501,7 +528,6 @@ class MarketService {
         const showChangePercent = config.get('showChangePercent', true);
         const { rise: riseColor, fall: fallColor } = (0, colorSettings_1.getRiseFallColors)(config);
         const format = config.get('format', '{symbol} {price} {change} {icon}');
-        const showVolume = config.get('showVolume', true);
         for (const item of this.statusItems) {
             const cached = this.store.get(item.key);
             const label = getDisplayLabel(item.symbol, cached?.quote?.name);
@@ -523,7 +549,7 @@ class MarketService {
             const priceText = (0, providers_1.formatPrice)(quote.price);
             const changeText = (0, providers_1.formatChangePercent)(quote.changePercent);
             item.statusBarItem.text = showChangePercent
-                ? (0, providers_1.renderFormat)(format, label, quote.price, quote.changePercent, !monochrome, showVolume && item.type === 'crypto' ? (0, providers_1.formatVolumeDetail)(quote) : undefined)
+                ? (0, providers_1.renderFormat)(format, label, quote.price, quote.changePercent, !monochrome)
                 : `${label} ${priceText}`;
             (0, colorSettings_1.applyStatusBarItemColors)(item.statusBarItem, quote.changePercent, monochrome, riseColor, fallColor);
             item.statusBarItem.tooltip = [
