@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -341,11 +341,12 @@
         },
         "kanpan.colorScheme": {
           "type": "string",
-          "enum": ["us", "cn", "custom"],
+          "enum": ["us", "cn", "custom", "none"],
           "enumDescriptions": [
             "美国惯例：绿涨红跌",
             "中国惯例：红涨绿跌",
-            "自定义涨跌颜色"
+            "自定义涨跌颜色",
+            "无颜色：涨跌不显示颜色，使用默认字体"
           ],
           "default": "us",
           "description": "涨跌颜色方案"

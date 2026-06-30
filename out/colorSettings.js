@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.COLOR_SCHEME_OPTIONS = void 0;
+exports.shouldUseNeutralColors = shouldUseNeutralColors;
 exports.getColorSchemeLabel = getColorSchemeLabel;
 exports.getRiseFallColors = getRiseFallColors;
 exports.isValidHexColor = isValidHexColor;
@@ -71,7 +72,19 @@ exports.COLOR_SCHEME_OPTIONS = [
         riseColor: GREEN_COLOR,
         fallColor: RED_COLOR,
     },
+    {
+        id: 'none',
+        label: '无颜色',
+        description: '涨跌不显示颜色，使用默认字体',
+        riseColor: GREEN_COLOR,
+        fallColor: RED_COLOR,
+    },
 ];
+/** 是否使用默认字体显示涨跌（不着色、不显示彩色箭头） */
+function shouldUseNeutralColors(config = kanpanConfig()) {
+    const scheme = config.get('colorScheme', 'us');
+    return scheme === 'none' || config.get('monochrome', false);
+}
 function kanpanConfig() {
     return vscode.workspace.getConfiguration('kanpan');
 }
@@ -81,6 +94,9 @@ function getColorSchemeLabel(scheme) {
 }
 function getRiseFallColors(config = kanpanConfig()) {
     const scheme = config.get('colorScheme', 'us');
+    if (scheme === 'none') {
+        return { rise: GREEN_COLOR, fall: RED_COLOR, scheme };
+    }
     if (scheme === 'cn') {
         return { rise: RED_COLOR, fall: GREEN_COLOR, scheme };
     }
@@ -159,6 +175,9 @@ async function applyColorScheme(scheme) {
         return;
     }
     await config.update('colorScheme', scheme, vscode.ConfigurationTarget.Global);
+    if (scheme === 'none') {
+        return;
+    }
     if (scheme !== 'custom') {
         await config.update('riseColor', option.riseColor, vscode.ConfigurationTarget.Global);
         await config.update('fallColor', option.fallColor, vscode.ConfigurationTarget.Global);
@@ -171,7 +190,9 @@ async function selectColorScheme() {
     const picked = await vscode.window.showQuickPick(exports.COLOR_SCHEME_OPTIONS.map((option) => ({
         label: option.id === current ? `$(check) ${option.label}` : option.label,
         description: option.description,
-        detail: `涨 ${option.riseColor}  跌 ${option.fallColor}`,
+        detail: option.id === 'none'
+            ? '涨跌幅保留，文字与图标不着色'
+            : `涨 ${option.riseColor}  跌 ${option.fallColor}`,
         id: option.id,
     })), {
         title: '看盘插件 - 涨跌颜色',

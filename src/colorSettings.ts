@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-export type ColorSchemeId = 'us' | 'cn' | 'custom';
+export type ColorSchemeId = 'us' | 'cn' | 'custom' | 'none';
 
 export interface ColorSchemeOption {
   id: ColorSchemeId;
@@ -35,7 +35,20 @@ export const COLOR_SCHEME_OPTIONS: ColorSchemeOption[] = [
     riseColor: GREEN_COLOR,
     fallColor: RED_COLOR,
   },
+  {
+    id: 'none',
+    label: '无颜色',
+    description: '涨跌不显示颜色，使用默认字体',
+    riseColor: GREEN_COLOR,
+    fallColor: RED_COLOR,
+  },
 ];
+
+/** 是否使用默认字体显示涨跌（不着色、不显示彩色箭头） */
+export function shouldUseNeutralColors(config = kanpanConfig()): boolean {
+  const scheme = config.get<ColorSchemeId>('colorScheme', 'us');
+  return scheme === 'none' || config.get<boolean>('monochrome', false);
+}
 
 function kanpanConfig(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('kanpan');
@@ -52,6 +65,9 @@ export function getRiseFallColors(config = kanpanConfig()): {
   scheme: ColorSchemeId;
 } {
   const scheme = config.get<ColorSchemeId>('colorScheme', 'us');
+  if (scheme === 'none') {
+    return { rise: GREEN_COLOR, fall: RED_COLOR, scheme };
+  }
   if (scheme === 'cn') {
     return { rise: RED_COLOR, fall: GREEN_COLOR, scheme };
   }
@@ -147,6 +163,9 @@ export async function applyColorScheme(scheme: ColorSchemeId): Promise<void> {
   }
 
   await config.update('colorScheme', scheme, vscode.ConfigurationTarget.Global);
+  if (scheme === 'none') {
+    return;
+  }
   if (scheme !== 'custom') {
     await config.update('riseColor', option.riseColor, vscode.ConfigurationTarget.Global);
     await config.update('fallColor', option.fallColor, vscode.ConfigurationTarget.Global);
@@ -161,7 +180,10 @@ export async function selectColorScheme(): Promise<void> {
     COLOR_SCHEME_OPTIONS.map((option) => ({
       label: option.id === current ? `$(check) ${option.label}` : option.label,
       description: option.description,
-      detail: `涨 ${option.riseColor}  跌 ${option.fallColor}`,
+      detail:
+        option.id === 'none'
+          ? '涨跌幅保留，文字与图标不着色'
+          : `涨 ${option.riseColor}  跌 ${option.fallColor}`,
       id: option.id,
     })),
     {

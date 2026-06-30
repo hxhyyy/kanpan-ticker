@@ -497,7 +497,7 @@ class MarketService {
             }
             return;
         }
-        const monochrome = config.get('monochrome', false);
+        const monochrome = (0, colorSettings_1.shouldUseNeutralColors)(config);
         const showChangePercent = config.get('showChangePercent', true);
         const { rise: riseColor, fall: fallColor } = (0, colorSettings_1.getRiseFallColors)(config);
         const format = config.get('format', '{symbol} {price} {change} {icon}');

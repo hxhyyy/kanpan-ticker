@@ -116,7 +116,7 @@ function buildQuoteTreeItem(type, symbol, store) {
     const quote = cached.quote;
     const changeText = (0, providers_1.formatChangePercent)(quote.changePercent);
     const priceText = (0, providers_1.formatPrice)(quote.price);
-    const monochrome = (0, marketService_1.getConfig)().get('monochrome', false);
+    const monochrome = (0, colorSettings_1.shouldUseNeutralColors)();
     const showChangePercent = (0, marketService_1.getConfig)().get('showChangePercent', true);
     const { rise, fall } = (0, colorSettings_1.getRiseFallColors)();
     const up = quote.changePercent >= 0;
@@ -259,7 +259,7 @@ class SettingsTreeProvider {
             new KanpanTreeItem('settings-color-scheme', '涨跌颜色方案', vscode.TreeItemCollapsibleState.None, {
                 iconId: 'symbol-color',
                 description: (0, colorSettings_1.getColorSchemeLabel)(scheme),
-                tooltip: '美国惯例：绿涨红跌\n中国惯例：红涨绿跌\n也可选手动自定义',
+                tooltip: '美国惯例：绿涨红跌\n中国惯例：红涨绿跌\n无颜色：涨跌不着色\n也可选手动自定义',
                 command: { command: 'kanpan.selectColorScheme', title: '选择涨跌颜色' },
             }),
         ];

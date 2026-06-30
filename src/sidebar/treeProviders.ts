@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { coloredTrendIcon, getColorSchemeLabel, getRiseFallColors } from '../colorSettings';
+import { coloredTrendIcon, getColorSchemeLabel, getRiseFallColors, shouldUseNeutralColors } from '../colorSettings';
 import { quoteDecorationUri } from '../quoteDecoration';
 import { formatChangePercent, formatPrice, formatVolumeDetail } from '../providers';
 import { normalizeAShareCode } from '../aShareSources';
@@ -98,7 +98,7 @@ function buildQuoteTreeItem(type: MarketType, symbol: string, store: MarketStore
   const quote = cached.quote;
   const changeText = formatChangePercent(quote.changePercent);
   const priceText = formatPrice(quote.price);
-  const monochrome = getConfig().get<boolean>('monochrome', false);
+  const monochrome = shouldUseNeutralColors();
   const showChangePercent = getConfig().get<boolean>('showChangePercent', true);
   const { rise, fall } = getRiseFallColors();
   const up = quote.changePercent >= 0;
@@ -276,7 +276,7 @@ export class SettingsTreeProvider implements vscode.TreeDataProvider<KanpanTreeI
       new KanpanTreeItem('settings-color-scheme', '涨跌颜色方案', vscode.TreeItemCollapsibleState.None, {
         iconId: 'symbol-color',
         description: getColorSchemeLabel(scheme),
-        tooltip: '美国惯例：绿涨红跌\n中国惯例：红涨绿跌\n也可选手动自定义',
+        tooltip: '美国惯例：绿涨红跌\n中国惯例：红涨绿跌\n无颜色：涨跌不着色\n也可选手动自定义',
         command: { command: 'kanpan.selectColorScheme', title: '选择涨跌颜色' },
       }),
     ];

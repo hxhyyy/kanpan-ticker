@@ -23,7 +23,12 @@ import {
   normalizeAShareCode,
   searchAShare,
 } from './aShareSources';
-import { applyStatusBarItemColors, clearStatusBarItemColors, getRiseFallColors } from './colorSettings';
+import {
+  applyStatusBarItemColors,
+  clearStatusBarItemColors,
+  getRiseFallColors,
+  shouldUseNeutralColors,
+} from './colorSettings';
 import {
   indexInWatchList,
   readWatchList,
@@ -600,7 +605,7 @@ export class MarketService {
       return;
     }
 
-    const monochrome = config.get<boolean>('monochrome', false);
+    const monochrome = shouldUseNeutralColors(config);
     const showChangePercent = config.get<boolean>('showChangePercent', true);
     const { rise: riseColor, fall: fallColor } = getRiseFallColors(config);
     const format = config.get<string>('format', '{symbol} {price} {change} {icon}');
