@@ -231,7 +231,7 @@ export class CryptoTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
           'crypto-group',
           `Crypto(${count})`,
           symbols.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
-          { contextValue: 'cryptoGroup', iconId: 'symbol-bitcoin', description: 'Binance' }
+          { contextValue: 'cryptoGroup', iconId: 'symbol-bitcoin', description: 'Binance 现货/合约' }
         ),
       ];
     }

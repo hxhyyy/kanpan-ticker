@@ -143,13 +143,7 @@ async function fetchUsStockVolumeStatsFromYahoo(symbol: string): Promise<VolumeS
   return { avg5, avg20, latestVolume };
 }
 
-/** 从 Binance 日 K 线拉取历史成交量，计算 5/20 日均量 */
-async function fetchCryptoVolumeStats(symbol: string): Promise<VolumeStats | undefined> {
-  const url =
-    `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol.toUpperCase())}` +
-    '&interval=1d&limit=22';
-
-  const body = await httpGetWithRetry(url);
+function volumeStatsFromKlines(body: string): VolumeStats | undefined {
   const klines = JSON.parse(body) as Array<[number, string, string, string, string, string, number, string, ...unknown[]]>;
   if (!Array.isArray(klines) || klines.length < 6) {
     return undefined;
@@ -172,6 +166,27 @@ async function fetchCryptoVolumeStats(symbol: string): Promise<VolumeStats | und
   }
 
   return { avg5, avg20, latestVolume };
+}
+
+/** 从 Binance 日 K 线拉取历史成交量（现货优先，失败再试合约） */
+async function fetchCryptoVolumeStats(symbol: string): Promise<VolumeStats | undefined> {
+  const upper = encodeURIComponent(symbol.toUpperCase());
+  const spotUrl = `https://api.binance.com/api/v3/klines?symbol=${upper}&interval=1d&limit=22`;
+  try {
+    const stats = volumeStatsFromKlines(await httpGetWithRetry(spotUrl));
+    if (stats) {
+      return stats;
+    }
+  } catch {
+    // 继续尝试合约
+  }
+
+  const futuresUrl = `https://fapi.binance.com/fapi/v1/klines?symbol=${upper}&interval=1d&limit=22`;
+  try {
+    return volumeStatsFromKlines(await httpGetWithRetry(futuresUrl));
+  } catch {
+    return undefined;
+  }
 }
 
 export async function fetchVolumeStats(type: VolumeStatsMarketType, symbol: string): Promise<VolumeStats | undefined> {

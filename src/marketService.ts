@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import {
   defaultSymbolLabel,
+  fetchBinanceTradingPairs,
   fetchCryptoQuote,
   formatChangePercent,
   formatPrice,
@@ -309,26 +310,41 @@ export class MarketService {
   }
 
   async addCrypto(): Promise<void> {
-    const symbol = await vscode.window.showInputBox({
-      prompt: '输入 Binance 交易对，如 BTCUSDT、ETHUSDT',
-      placeHolder: 'BTCUSDT',
-      validateInput: (value) => {
-        if (!value.trim()) {
-          return '交易对不能为空';
-        }
-        if (!/^[A-Za-z0-9]+$/.test(value.trim())) {
-          return '请输入有效的交易对';
-        }
-        return undefined;
-      },
-    });
-    if (!symbol) {
+    let pairs;
+    try {
+      pairs = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: '正在加载 Binance 交易对...',
+        },
+        () => fetchBinanceTradingPairs()
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `加载 Binance 交易对失败: ${error instanceof Error ? error.message : String(error)}`
+      );
       return;
     }
 
     const symbols = getConfig().get<string[]>('cryptoSymbols', []);
-    const upper = symbol.trim().toUpperCase();
-    if (symbols.includes(upper)) {
+    const existing = new Set(symbols.map((s) => s.toUpperCase()));
+    const picked = await vscode.window.showQuickPick(
+      pairs.map((pair) => ({
+        label: pair.symbol,
+        description: `${pair.baseAsset}/${pair.quoteAsset} · ${pair.market === 'futures' ? '合约' : '现货'}`,
+        detail: existing.has(pair.symbol) ? '已在列表中' : undefined,
+      })),
+      {
+        placeHolder: '输入前缀筛选，如 STRC、MSTR、BTC（含现货与合约）',
+        matchOnDescription: true,
+      }
+    );
+    if (!picked) {
+      return;
+    }
+
+    const upper = picked.label.toUpperCase();
+    if (existing.has(upper)) {
       vscode.window.showInformationMessage(`${upper} 已在列表中`);
       return;
     }

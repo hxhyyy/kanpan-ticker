@@ -219,7 +219,7 @@ class CryptoTreeProvider {
         if (!element) {
             const count = symbols.length;
             return [
-                new KanpanTreeItem('crypto-group', `Crypto(${count})`, symbols.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None, { contextValue: 'cryptoGroup', iconId: 'symbol-bitcoin', description: 'Binance' }),
+                new KanpanTreeItem('crypto-group', `Crypto(${count})`, symbols.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None, { contextValue: 'cryptoGroup', iconId: 'symbol-bitcoin', description: 'Binance 现货/合约' }),
             ];
         }
         if (element.nodeId === 'crypto-group') {
