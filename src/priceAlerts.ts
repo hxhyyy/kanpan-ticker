@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { defaultSymbolLabel, formatPrice, QuoteData } from './providers';
+import { showStealthAlert } from './stealthNotify';
 
 const ALERTS_STATE_KEY = 'kanpan.priceAlerts';
 
@@ -228,17 +229,9 @@ function isConditionMet(alert: PriceAlert, price: number): boolean {
   }
 }
 
-function buildNotifyMessage(alert: PriceAlert, quote: QuoteData): string {
-  const { symbol } = parseKey(alert.marketKey);
-  const name = displayLabel(symbol, quote.name);
-  const priceText = formatPrice(quote.price);
-  if (isPctCondition(alert.condition)) {
-    const base = alert.baselinePrice ?? quote.price;
-    const pct = base > 0 ? ((quote.price - base) / base) * 100 : 0;
-    const sign = pct >= 0 ? '+' : '';
-    return `${name} ${conditionLabel(alert.condition)} ${alert.value}%（现价 ${priceText}，变动 ${sign}${pct.toFixed(2)}%）`;
-  }
-  return `${name} ${conditionLabel(alert.condition)} ${formatPrice(alert.value)}（现价 ${priceText}）`;
+/** 对外弹出的隐蔽文案：只显示现价数字，避免一眼看出是行情提醒 */
+function buildStealthNotifyText(quote: QuoteData): string {
+  return formatPrice(quote.price);
 }
 
 /** 行情刷新后检查该标的的价格提醒 */
@@ -287,8 +280,9 @@ export async function evaluatePriceAlerts(
     await savePriceAlerts(context, next);
   }
 
-  for (const alert of fired) {
-    void vscode.window.showWarningMessage(`价格提醒: ${buildNotifyMessage(alert, quote)}`, '知道了');
+  for (const _alert of fired) {
+    // 只弹现价数字；优先系统通知，失败再回退编辑器角标
+    void showStealthAlert(buildStealthNotifyText(quote));
   }
 }
 

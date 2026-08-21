@@ -45,6 +45,7 @@ exports.createPriceAlert = createPriceAlert;
 exports.managePriceAlerts = managePriceAlerts;
 const vscode = __importStar(require("vscode"));
 const providers_1 = require("./providers");
+const stealthNotify_1 = require("./stealthNotify");
 const ALERTS_STATE_KEY = 'kanpan.priceAlerts';
 function getKanpanConfig() {
     return vscode.workspace.getConfiguration('kanpan');
@@ -218,17 +219,9 @@ function isConditionMet(alert, price) {
         }
     }
 }
-function buildNotifyMessage(alert, quote) {
-    const { symbol } = parseKey(alert.marketKey);
-    const name = displayLabel(symbol, quote.name);
-    const priceText = (0, providers_1.formatPrice)(quote.price);
-    if (isPctCondition(alert.condition)) {
-        const base = alert.baselinePrice ?? quote.price;
-        const pct = base > 0 ? ((quote.price - base) / base) * 100 : 0;
-        const sign = pct >= 0 ? '+' : '';
-        return `${name} ${conditionLabel(alert.condition)} ${alert.value}%（现价 ${priceText}，变动 ${sign}${pct.toFixed(2)}%）`;
-    }
-    return `${name} ${conditionLabel(alert.condition)} ${(0, providers_1.formatPrice)(alert.value)}（现价 ${priceText}）`;
+/** 对外弹出的隐蔽文案：只显示现价数字，避免一眼看出是行情提醒 */
+function buildStealthNotifyText(quote) {
+    return (0, providers_1.formatPrice)(quote.price);
 }
 /** 行情刷新后检查该标的的价格提醒 */
 async function evaluatePriceAlerts(context, marketKey, quote) {
@@ -266,8 +259,9 @@ async function evaluatePriceAlerts(context, marketKey, quote) {
         const next = alerts.map((a) => byId.get(a.id) ?? a);
         await savePriceAlerts(context, next);
     }
-    for (const alert of fired) {
-        void vscode.window.showWarningMessage(`价格提醒: ${buildNotifyMessage(alert, quote)}`, '知道了');
+    for (const _alert of fired) {
+        // 只弹现价数字；优先系统通知，失败再回退编辑器角标
+        void (0, stealthNotify_1.showStealthAlert)(buildStealthNotifyText(quote));
     }
 }
 async function pickCondition() {

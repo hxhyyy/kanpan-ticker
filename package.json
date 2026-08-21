@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -339,17 +339,31 @@
       "properties": {
         "kanpan.stocks": {
           "type": "array",
-          "default": ["AAPL", "NVDA", "TSLA"],
+          "default": [
+            "AAPL",
+            "NVDA",
+            "TSLA"
+          ],
           "description": "要监控的美股代码"
         },
         "kanpan.aShares": {
           "type": "array",
-          "default": ["sh600519", "sz300750"],
+          "default": [
+            "sh600519",
+            "sz300750"
+          ],
           "description": "要监控的 A 股代码，如 sh600519、600519；添加时也可输入中文名称搜索"
         },
         "kanpan.stockDataSource": {
           "type": "string",
-          "enum": ["auto", "eastmoney", "sina", "tencent", "finnhubExtended", "finnhub"],
+          "enum": [
+            "auto",
+            "eastmoney",
+            "sina",
+            "tencent",
+            "finnhubExtended",
+            "finnhub"
+          ],
           "enumDescriptions": [
             "按优先级自动回退",
             "东方财富（免 Key，盘前盘后）",
@@ -363,12 +377,20 @@
         },
         "kanpan.autoFallbackOrder": {
           "type": "array",
-          "default": ["eastmoney", "sina", "tencent", "finnhubExtended", "finnhub"],
+          "default": [
+            "eastmoney",
+            "sina",
+            "tencent",
+            "finnhubExtended",
+            "finnhub"
+          ],
           "description": "自动模式下的数据源优先级"
         },
         "kanpan.cryptoSymbols": {
           "type": "array",
-          "default": ["BTCUSDT"],
+          "default": [
+            "BTCUSDT"
+          ],
           "description": "Binance 交易对，如 BTCUSDT、ETHUSDT"
         },
         "kanpan.statusBarItems": {
@@ -395,7 +417,12 @@
         },
         "kanpan.colorScheme": {
           "type": "string",
-          "enum": ["us", "cn", "custom", "none"],
+          "enum": [
+            "us",
+            "cn",
+            "custom",
+            "none"
+          ],
           "enumDescriptions": [
             "美国惯例：绿涨红跌",
             "中国惯例：红涨绿跌",
@@ -451,6 +478,17 @@
           "minimum": 0,
           "description": "价格提醒「每次触发」的默认冷却分钟数；创建提醒时可单独覆盖。0 表示不冷却"
         },
+        "kanpan.alertNotifyMode": {
+          "type": "string",
+          "enum": ["system", "ide", "both"],
+          "enumDescriptions": [
+            "Windows 系统通知中心（隐蔽，默认）",
+            "仅 Cursor/VS Code 编辑器内角标",
+            "系统通知 + 编辑器角标同时弹出"
+          ],
+          "default": "system",
+          "description": "价格提醒的通知方式。文案仅为现价数字"
+        },
         "kanpan.enabled": {
           "type": "boolean",
           "default": true,
@@ -458,7 +496,10 @@
         },
         "kanpan.statusBarPosition": {
           "type": "string",
-          "enum": ["left", "right"],
+          "enum": [
+            "left",
+            "right"
+          ],
           "enumDescriptions": [
             "显示在状态栏左侧（更醒目）",
             "显示在状态栏右侧"
@@ -476,12 +517,14 @@
     "package": "vsce package --allow-missing-repository"
   },
   "dependencies": {
-    "iconv-lite": "^0.6.3"
+    "iconv-lite": "^0.6.3",
+    "node-notifier": "^10.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/node-notifier": "^8.0.5",
     "@types/vscode": "^1.85.0",
-    "typescript": "^5.3.3",
-    "@vscode/vsce": "^2.22.0"
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.3.3"
   }
 }
