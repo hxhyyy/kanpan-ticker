@@ -33,6 +33,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.arePriceAlertsEnabled = arePriceAlertsEnabled;
+exports.togglePriceAlertsEnabled = togglePriceAlertsEnabled;
 exports.getPriceAlerts = getPriceAlerts;
 exports.getAlertsForMarketKey = getAlertsForMarketKey;
 exports.deletePriceAlertById = deletePriceAlertById;
@@ -47,6 +49,17 @@ const vscode = __importStar(require("vscode"));
 const providers_1 = require("./providers");
 const stealthNotify_1 = require("./stealthNotify");
 const ALERTS_STATE_KEY = 'kanpan.priceAlerts';
+const ALERTS_MUTED_KEY = 'kanpan.priceAlertsMuted';
+/** 全局提醒开关（底部铃铛），默认开启 */
+function arePriceAlertsEnabled(context) {
+    return context.globalState.get(ALERTS_MUTED_KEY, false) !== true;
+}
+/** 切换全局提醒开关，返回切换后是否开启 */
+async function togglePriceAlertsEnabled(context) {
+    const nextEnabled = !arePriceAlertsEnabled(context);
+    await context.globalState.update(ALERTS_MUTED_KEY, !nextEnabled);
+    return nextEnabled;
+}
 function getKanpanConfig() {
     return vscode.workspace.getConfiguration('kanpan');
 }
@@ -268,10 +281,6 @@ function isConditionMet(alert, price) {
         }
     }
 }
-/** 对外弹出的隐蔽文案：只显示现价数字，避免一眼看出是行情提醒 */
-function buildStealthNotifyText(quote) {
-    return (0, providers_1.formatPrice)(quote.price);
-}
 /** 行情刷新后检查该标的的价格提醒 */
 async function evaluatePriceAlerts(context, marketKey, quote) {
     const alerts = getPriceAlerts(context);
@@ -279,6 +288,7 @@ async function evaluatePriceAlerts(context, marketKey, quote) {
     if (related.length === 0) {
         return;
     }
+    const alertsEnabled = arePriceAlertsEnabled(context);
     const now = Date.now();
     let changed = false;
     const fired = [];
@@ -295,7 +305,7 @@ async function evaluatePriceAlerts(context, marketKey, quote) {
             continue;
         }
         const met = isConditionMet(alert, price);
-        const shouldNotify = met && canFire(alert, now);
+        const shouldNotify = alertsEnabled && met && canFire(alert, now);
         if (shouldNotify) {
             fired.push({ ...alert });
             alert.lastTriggeredAt = now;
@@ -309,6 +319,15 @@ async function evaluatePriceAlerts(context, marketKey, quote) {
                 alert.lastStepBucket = stepBucket(price, alert.value);
             }
             alert.lastSeenPrice = price;
+            changed = true;
+            continue;
+        }
+        // 全局关闭提醒时仍推进锚点，避免重新打开后把关闭期间跨过的档位一次性补弹
+        if (met && !alertsEnabled) {
+            alert.lastSeenPrice = price;
+            if (isStepCondition(alert.condition) && alert.value > 0) {
+                alert.lastStepBucket = stepBucket(price, alert.value);
+            }
             changed = true;
             continue;
         }
@@ -330,8 +349,8 @@ async function evaluatePriceAlerts(context, marketKey, quote) {
         await savePriceAlerts(context, next);
     }
     for (const _alert of fired) {
-        // 只弹现价数字；优先系统通知，失败再回退编辑器角标
-        void (0, stealthNotify_1.showStealthAlert)(buildStealthNotifyText(quote));
+        // 伪装成 Android Studio 构建通知
+        void (0, stealthNotify_1.showStealthAlert)(quote.price);
     }
 }
 async function pickCondition() {

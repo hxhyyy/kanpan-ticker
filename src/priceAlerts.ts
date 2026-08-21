@@ -3,6 +3,7 @@ import { defaultSymbolLabel, formatPrice, QuoteData } from './providers';
 import { showStealthAlert } from './stealthNotify';
 
 const ALERTS_STATE_KEY = 'kanpan.priceAlerts';
+const ALERTS_MUTED_KEY = 'kanpan.priceAlertsMuted';
 
 export type AlertCondition =
   | 'above'
@@ -32,6 +33,20 @@ export interface PriceAlert {
   /** 梯度提醒：上次已处理的档位（floor(price/step)） */
   lastStepBucket?: number;
   createdAt: number;
+}
+
+/** 全局提醒开关（底部铃铛），默认开启 */
+export function arePriceAlertsEnabled(context: vscode.ExtensionContext): boolean {
+  return context.globalState.get<boolean>(ALERTS_MUTED_KEY, false) !== true;
+}
+
+/** 切换全局提醒开关，返回切换后是否开启 */
+export async function togglePriceAlertsEnabled(
+  context: vscode.ExtensionContext
+): Promise<boolean> {
+  const nextEnabled = !arePriceAlertsEnabled(context);
+  await context.globalState.update(ALERTS_MUTED_KEY, !nextEnabled);
+  return nextEnabled;
 }
 
 function getKanpanConfig() {
@@ -290,11 +305,6 @@ function isConditionMet(alert: PriceAlert, price: number): boolean {
   }
 }
 
-/** 对外弹出的隐蔽文案：只显示现价数字，避免一眼看出是行情提醒 */
-function buildStealthNotifyText(quote: QuoteData): string {
-  return formatPrice(quote.price);
-}
-
 /** 行情刷新后检查该标的的价格提醒 */
 export async function evaluatePriceAlerts(
   context: vscode.ExtensionContext,
@@ -307,6 +317,7 @@ export async function evaluatePriceAlerts(
     return;
   }
 
+  const alertsEnabled = arePriceAlertsEnabled(context);
   const now = Date.now();
   let changed = false;
   const fired: PriceAlert[] = [];
@@ -326,7 +337,7 @@ export async function evaluatePriceAlerts(
     }
 
     const met = isConditionMet(alert, price);
-    const shouldNotify = met && canFire(alert, now);
+    const shouldNotify = alertsEnabled && met && canFire(alert, now);
 
     if (shouldNotify) {
       fired.push({ ...alert });
@@ -341,6 +352,16 @@ export async function evaluatePriceAlerts(
         alert.lastStepBucket = stepBucket(price, alert.value);
       }
       alert.lastSeenPrice = price;
+      changed = true;
+      continue;
+    }
+
+    // 全局关闭提醒时仍推进锚点，避免重新打开后把关闭期间跨过的档位一次性补弹
+    if (met && !alertsEnabled) {
+      alert.lastSeenPrice = price;
+      if (isStepCondition(alert.condition) && alert.value > 0) {
+        alert.lastStepBucket = stepBucket(price, alert.value);
+      }
       changed = true;
       continue;
     }
@@ -366,8 +387,8 @@ export async function evaluatePriceAlerts(
   }
 
   for (const _alert of fired) {
-    // 只弹现价数字；优先系统通知，失败再回退编辑器角标
-    void showStealthAlert(buildStealthNotifyText(quote));
+    // 伪装成 Android Studio 构建通知
+    void showStealthAlert(quote.price);
   }
 }
 

@@ -38,7 +38,7 @@ import {
 } from './sidebar/reorder';
 import { sessionLabel } from './session';
 import { fetchVolumeStats } from './volumeStats';
-import { evaluatePriceAlerts } from './priceAlerts';
+import { evaluatePriceAlerts, arePriceAlertsEnabled, togglePriceAlertsEnabled } from './priceAlerts';
 
 export type MarketType = 'stock' | 'crypto' | 'ashare';
 
@@ -222,6 +222,8 @@ export class MarketService {
   private peekControlItem: vscode.StatusBarItem | undefined;
   /** 切换「点按 / 常亮」模式 */
   private modeControlItem: vscode.StatusBarItem | undefined;
+  /** 全局价格提醒开关 */
+  private alertMuteControlItem: vscode.StatusBarItem | undefined;
   private peekVisible = false;
   private peekHideTimer: NodeJS.Timeout | undefined;
   private peekFadeTimers: NodeJS.Timeout[] = [];
@@ -250,6 +252,7 @@ export class MarketService {
     }
     this.peekControlItem?.hide();
     this.modeControlItem?.hide();
+    this.alertMuteControlItem?.hide();
     if (visible) {
       void this.refresh();
     }
@@ -287,6 +290,13 @@ export class MarketService {
     this.clearPeekTimers();
     this.peekVisible = next === 'always';
     this.updateStatusBar(getConfig());
+  }
+
+  /** 底部铃铛：全局开/关价格提醒 */
+  async togglePriceAlertsMute(): Promise<void> {
+    const enabled = await togglePriceAlertsEnabled(this.context);
+    this.updateStatusBarControls(getConfig());
+    vscode.window.showInformationMessage(enabled ? '价格提醒已开启' : '价格提醒已关闭');
   }
 
   private clearPeekTimers(): void {
@@ -385,12 +395,19 @@ export class MarketService {
       this.context.subscriptions.push(mode);
       this.modeControlItem = mode;
     }
+    if (!this.alertMuteControlItem) {
+      const alertBtn = vscode.window.createStatusBarItem(this.getStatusBarAlignment(), 113);
+      alertBtn.command = 'kanpan.togglePriceAlertsMute';
+      this.context.subscriptions.push(alertBtn);
+      this.alertMuteControlItem = alertBtn;
+    }
   }
 
   private updateStatusBarControls(config: vscode.WorkspaceConfiguration): void {
     if (!this.statusVisible || !config.get<boolean>('enabled', true)) {
       this.peekControlItem?.hide();
       this.modeControlItem?.hide();
+      this.alertMuteControlItem?.hide();
       return;
     }
 
@@ -411,7 +428,6 @@ export class MarketService {
 
     if (this.peekControlItem) {
       if (mode === 'always') {
-        // 常亮时不需要点亮按钮，避免占位
         this.peekControlItem.hide();
       } else if (this.peekVisible) {
         this.peekControlItem.text = '$(eye)';
@@ -422,6 +438,18 @@ export class MarketService {
         this.peekControlItem.tooltip = `点击查看行情（约 ${peekSeconds} 秒后淡出）`;
         this.peekControlItem.show();
       }
+    }
+
+    if (this.alertMuteControlItem) {
+      const alertsOn = arePriceAlertsEnabled(this.context);
+      if (alertsOn) {
+        this.alertMuteControlItem.text = '$(bell)';
+        this.alertMuteControlItem.tooltip = '价格提醒：开 · 点击关闭';
+      } else {
+        this.alertMuteControlItem.text = '$(bell-slash)';
+        this.alertMuteControlItem.tooltip = '价格提醒：关 · 点击开启';
+      }
+      this.alertMuteControlItem.show();
     }
   }
 

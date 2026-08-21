@@ -210,6 +210,7 @@ class MarketService {
         }
         this.peekControlItem?.hide();
         this.modeControlItem?.hide();
+        this.alertMuteControlItem?.hide();
         if (visible) {
             void this.refresh();
         }
@@ -242,6 +243,12 @@ class MarketService {
         this.clearPeekTimers();
         this.peekVisible = next === 'always';
         this.updateStatusBar(getConfig());
+    }
+    /** 底部铃铛：全局开/关价格提醒 */
+    async togglePriceAlertsMute() {
+        const enabled = await (0, priceAlerts_1.togglePriceAlertsEnabled)(this.context);
+        this.updateStatusBarControls(getConfig());
+        vscode.window.showInformationMessage(enabled ? '价格提醒已开启' : '价格提醒已关闭');
     }
     clearPeekTimers() {
         if (this.peekHideTimer) {
@@ -331,11 +338,18 @@ class MarketService {
             this.context.subscriptions.push(mode);
             this.modeControlItem = mode;
         }
+        if (!this.alertMuteControlItem) {
+            const alertBtn = vscode.window.createStatusBarItem(this.getStatusBarAlignment(), 113);
+            alertBtn.command = 'kanpan.togglePriceAlertsMute';
+            this.context.subscriptions.push(alertBtn);
+            this.alertMuteControlItem = alertBtn;
+        }
     }
     updateStatusBarControls(config) {
         if (!this.statusVisible || !config.get('enabled', true)) {
             this.peekControlItem?.hide();
             this.modeControlItem?.hide();
+            this.alertMuteControlItem?.hide();
             return;
         }
         this.ensureStatusBarControls();
@@ -354,7 +368,6 @@ class MarketService {
         }
         if (this.peekControlItem) {
             if (mode === 'always') {
-                // 常亮时不需要点亮按钮，避免占位
                 this.peekControlItem.hide();
             }
             else if (this.peekVisible) {
@@ -367,6 +380,18 @@ class MarketService {
                 this.peekControlItem.tooltip = `点击查看行情（约 ${peekSeconds} 秒后淡出）`;
                 this.peekControlItem.show();
             }
+        }
+        if (this.alertMuteControlItem) {
+            const alertsOn = (0, priceAlerts_1.arePriceAlertsEnabled)(this.context);
+            if (alertsOn) {
+                this.alertMuteControlItem.text = '$(bell)';
+                this.alertMuteControlItem.tooltip = '价格提醒：开 · 点击关闭';
+            }
+            else {
+                this.alertMuteControlItem.text = '$(bell-slash)';
+                this.alertMuteControlItem.tooltip = '价格提醒：关 · 点击开启';
+            }
+            this.alertMuteControlItem.show();
         }
     }
     /** @deprecated 兼容旧调用名 */
