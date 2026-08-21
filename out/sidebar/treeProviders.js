@@ -304,12 +304,19 @@ class SettingsTreeProvider {
     getChildren() {
         const source = currentStockSourceLabel();
         const { scheme, rise, fall } = (0, colorSettings_1.getRiseFallColors)();
+        const brightness = (0, colorSettings_1.getStatusBarBrightness)();
         const items = [
             new KanpanTreeItem('settings-color-scheme', '涨跌颜色方案', vscode.TreeItemCollapsibleState.None, {
                 iconId: 'symbol-color',
                 description: (0, colorSettings_1.getColorSchemeLabel)(scheme),
                 tooltip: '美国惯例：绿涨红跌\n中国惯例：红涨绿跌\n无颜色：涨跌不着色\n也可选手动自定义',
                 command: { command: 'kanpan.selectColorScheme', title: '选择涨跌颜色' },
+            }),
+            new KanpanTreeItem('settings-status-brightness', '底部字体深浅', vscode.TreeItemCollapsibleState.None, {
+                iconId: 'eye',
+                description: `${brightness}%`,
+                tooltip: '调整状态栏行情文字深浅（10 最暗，100 最亮）\n档位对齐点亮后的淡出梯度',
+                command: { command: 'kanpan.setStatusBarBrightness', title: '设置底部字体深浅' },
             }),
         ];
         if (scheme === 'custom') {

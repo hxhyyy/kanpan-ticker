@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { initKanpanThemeColors, selectColorScheme, setCustomColor } from './colorSettings';
+import { initKanpanThemeColors, selectColorScheme, selectStatusBarBrightness, setCustomColor } from './colorSettings';
 import { MarketService, MarketStore } from './marketService';
 import {
   BinancePairsSnapshot,
@@ -10,6 +10,7 @@ import { QuoteDecorationProvider } from './quoteDecoration';
 import { createCryptoDragController, createStockDragController } from './sidebar/reorder';
 import { bindExtensionContext, CryptoTreeProvider, SettingsTreeProvider, StockTreeProvider } from './sidebar/treeProviders';
 import { createPriceAlert, deletePriceAlertById, managePriceAlerts, togglePriceAlertById } from './priceAlerts';
+import { initStealthNotify } from './stealthNotify';
 
 const BINANCE_PAIRS_STORAGE_KEY = 'kanpan.binanceTradingPairs';
 
@@ -30,6 +31,7 @@ async function moveItem(
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   bindExtensionContext(context);
+  initStealthNotify(context);
   await initKanpanThemeColors();
 
   initBinancePairsCache(
@@ -231,6 +233,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       cryptoProvider.refresh();
       settingsProvider.refresh();
       quoteDecoration.refresh();
+      void marketService.refresh();
+    }),
+    vscode.commands.registerCommand('kanpan.setStatusBarBrightness', async () => {
+      await selectStatusBarBrightness();
+      settingsProvider.refresh();
       void marketService.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {

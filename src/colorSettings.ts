@@ -118,20 +118,121 @@ export function applyStatusBarItemColors(
   changePercent: number,
   monochrome: boolean,
   rise: string,
-  fall: string
+  fall: string,
+  brightness = getStatusBarBrightness()
 ): void {
   statusBarItem.backgroundColor = undefined;
   if (monochrome) {
-    statusBarItem.color = undefined;
+    statusBarItem.color = statusBarNeutralColor(brightness);
     return;
   }
   const trendColor = changePercent >= 0 ? rise : fall;
-  statusBarItem.color = toStatusBarReadableColor(trendColor);
+  const readable = toStatusBarReadableColor(trendColor);
+  statusBarItem.color = applyBrightnessToHex(readable, brightness);
 }
 
 export function clearStatusBarItemColors(statusBarItem: vscode.StatusBarItem): void {
   statusBarItem.color = undefined;
   statusBarItem.backgroundColor = undefined;
+}
+
+/** 底部状态栏文字深浅：10 最暗，100 最亮 */
+export function getStatusBarBrightness(config = kanpanConfig()): number {
+  const raw = config.get<number>('statusBarBrightness', 100);
+  if (!Number.isFinite(raw)) {
+    return 100;
+  }
+  return Math.max(10, Math.min(100, Math.round(raw)));
+}
+
+function clampByte(n: number): number {
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+function toHex(r: number, g: number, b: number): string {
+  return `#${[clampByte(r), clampByte(g), clampByte(b)]
+    .map((n) => n.toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+/** 把颜色按深浅压暗（朝状态栏深灰靠拢），复用点亮淡出那套观感 */
+export function applyBrightnessToHex(hex: string, brightness: number): string {
+  const t = Math.max(10, Math.min(100, brightness)) / 100;
+  const { r, g, b } = parseHexColor(hex);
+  const base = 0x2d;
+  return toHex(base + (r - base) * t, base + (g - base) * t, base + (b - base) * t);
+}
+
+/** 中性灰阶：与点亮后淡出梯度同一路（亮 → 暗） */
+export function statusBarNeutralColor(brightness: number): string {
+  const t = (Math.max(10, Math.min(100, brightness)) - 10) / 90;
+  const dark = 0x2d;
+  const light = 0xe0;
+  const v = Math.round(dark + (light - dark) * t);
+  return toHex(v, v, v);
+}
+
+/** 点亮结束淡出：从当前深浅逐步压到最暗 */
+export function statusBarFadeOutColors(startBrightness: number, steps = 5): string[] {
+  const start = Math.max(10, Math.min(100, startBrightness));
+  const end = 10;
+  const colors: string[] = [];
+  for (let i = 1; i <= steps; i++) {
+    const b = start - ((start - end) * i) / steps;
+    colors.push(statusBarNeutralColor(b));
+  }
+  return colors;
+}
+
+export async function selectStatusBarBrightness(): Promise<void> {
+  const config = kanpanConfig();
+  const current = getStatusBarBrightness(config);
+  const presets = [
+    { label: '最亮', brightness: 100, description: '默认，最清晰' },
+    { label: '偏亮', brightness: 80, description: '略压一点' },
+    { label: '适中', brightness: 55, description: '接近点亮后第一档灰' },
+    { label: '偏暗', brightness: 35, description: '更隐蔽' },
+    { label: '很暗', brightness: 20, description: '接近淡出末档' },
+    { label: '自定义…', brightness: -1, description: '输入 10–100' },
+  ];
+
+  const picked = await vscode.window.showQuickPick(
+    presets.map((item) => ({
+      label: item.brightness === current ? `$(check) ${item.label}` : item.label,
+      description: item.brightness > 0 ? `${item.brightness}%` : undefined,
+      detail: item.description,
+      brightness: item.brightness,
+    })),
+    {
+      title: '看盘插件 - 底部字体深浅',
+      placeHolder: `当前 ${current}%`,
+    }
+  );
+  if (!picked) {
+    return;
+  }
+
+  let next = picked.brightness;
+  if (next < 0) {
+    const input = await vscode.window.showInputBox({
+      prompt: '底部字体深浅（10 最暗，100 最亮）',
+      value: String(current),
+      validateInput: (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < 10 || n > 100) {
+          return '请输入 10–100 的数字';
+        }
+        return undefined;
+      },
+    });
+    if (!input) {
+      return;
+    }
+    next = Math.round(Number(input));
+  }
+
+  await config.update('statusBarBrightness', next, vscode.ConfigurationTarget.Global);
+  vscode.window.showInformationMessage(`底部字体深浅已设为 ${next}%`);
 }
 
 export function coloredTrendIcon(up: boolean, color: string): vscode.Uri {

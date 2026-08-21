@@ -267,13 +267,12 @@ class MarketService {
         if (this.getStatusBarDisplayMode() !== 'peek') {
             return;
         }
-        const steps = [
-            { delay: 0, color: '#9e9e9e' },
-            { delay: 200, color: '#757575' },
-            { delay: 400, color: '#616161' },
-            { delay: 600, color: '#424242' },
-            { delay: 800, color: '#2d2d2d' },
-        ];
+        const brightness = (0, colorSettings_1.getStatusBarBrightness)(getConfig());
+        const fadeColors = (0, colorSettings_1.statusBarFadeOutColors)(brightness);
+        const steps = fadeColors.map((color, index) => ({
+            delay: index * 200,
+            color,
+        }));
         for (const step of steps) {
             const timer = setTimeout(() => {
                 if (generation !== this.peekGeneration || !this.peekVisible) {
@@ -297,7 +296,7 @@ class MarketService {
                 item.statusBarItem.hide();
             }
             this.updateStatusBarControls(getConfig());
-        }, 1000);
+        }, Math.max(fadeColors.length, 1) * 200);
         this.peekFadeTimers.push(done);
     }
     /** peek = 点按点亮；always = 一直常亮 */
@@ -735,6 +734,7 @@ class MarketService {
             return;
         }
         const monochrome = (0, colorSettings_1.shouldUseNeutralColors)(config);
+        const brightness = (0, colorSettings_1.getStatusBarBrightness)(config);
         const showChangePercent = config.get('showChangePercent', true);
         const { rise: riseColor, fall: fallColor } = (0, colorSettings_1.getRiseFallColors)(config);
         const format = config.get('format', '{symbol} {price} {change} {icon}');
@@ -763,7 +763,7 @@ class MarketService {
             item.statusBarItem.text = showChangePercent
                 ? (0, providers_1.renderFormat)(format, label, quote.price, quote.changePercent, !monochrome)
                 : `${label} ${priceText}`;
-            (0, colorSettings_1.applyStatusBarItemColors)(item.statusBarItem, quote.changePercent, monochrome, riseColor, fallColor);
+            (0, colorSettings_1.applyStatusBarItemColors)(item.statusBarItem, quote.changePercent, monochrome, riseColor, fallColor, brightness);
             item.statusBarItem.tooltip = [
                 (0, stockSources_1.formatQuoteTooltip)(quote),
                 '',

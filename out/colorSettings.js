@@ -41,6 +41,11 @@ exports.isValidHexColor = isValidHexColor;
 exports.toStatusBarReadableColor = toStatusBarReadableColor;
 exports.applyStatusBarItemColors = applyStatusBarItemColors;
 exports.clearStatusBarItemColors = clearStatusBarItemColors;
+exports.getStatusBarBrightness = getStatusBarBrightness;
+exports.applyBrightnessToHex = applyBrightnessToHex;
+exports.statusBarNeutralColor = statusBarNeutralColor;
+exports.statusBarFadeOutColors = statusBarFadeOutColors;
+exports.selectStatusBarBrightness = selectStatusBarBrightness;
 exports.coloredTrendIcon = coloredTrendIcon;
 exports.syncKanpanThemeColors = syncKanpanThemeColors;
 exports.initKanpanThemeColors = initKanpanThemeColors;
@@ -137,18 +142,105 @@ function toStatusBarReadableColor(hex) {
     }
     return '#FFFFFF';
 }
-function applyStatusBarItemColors(statusBarItem, changePercent, monochrome, rise, fall) {
+function applyStatusBarItemColors(statusBarItem, changePercent, monochrome, rise, fall, brightness = getStatusBarBrightness()) {
     statusBarItem.backgroundColor = undefined;
     if (monochrome) {
-        statusBarItem.color = undefined;
+        statusBarItem.color = statusBarNeutralColor(brightness);
         return;
     }
     const trendColor = changePercent >= 0 ? rise : fall;
-    statusBarItem.color = toStatusBarReadableColor(trendColor);
+    const readable = toStatusBarReadableColor(trendColor);
+    statusBarItem.color = applyBrightnessToHex(readable, brightness);
 }
 function clearStatusBarItemColors(statusBarItem) {
     statusBarItem.color = undefined;
     statusBarItem.backgroundColor = undefined;
+}
+/** 底部状态栏文字深浅：10 最暗，100 最亮 */
+function getStatusBarBrightness(config = kanpanConfig()) {
+    const raw = config.get('statusBarBrightness', 100);
+    if (!Number.isFinite(raw)) {
+        return 100;
+    }
+    return Math.max(10, Math.min(100, Math.round(raw)));
+}
+function clampByte(n) {
+    return Math.max(0, Math.min(255, Math.round(n)));
+}
+function toHex(r, g, b) {
+    return `#${[clampByte(r), clampByte(g), clampByte(b)]
+        .map((n) => n.toString(16).padStart(2, '0'))
+        .join('')}`;
+}
+/** 把颜色按深浅压暗（朝状态栏深灰靠拢），复用点亮淡出那套观感 */
+function applyBrightnessToHex(hex, brightness) {
+    const t = Math.max(10, Math.min(100, brightness)) / 100;
+    const { r, g, b } = parseHexColor(hex);
+    const base = 0x2d;
+    return toHex(base + (r - base) * t, base + (g - base) * t, base + (b - base) * t);
+}
+/** 中性灰阶：与点亮后淡出梯度同一路（亮 → 暗） */
+function statusBarNeutralColor(brightness) {
+    const t = (Math.max(10, Math.min(100, brightness)) - 10) / 90;
+    const dark = 0x2d;
+    const light = 0xe0;
+    const v = Math.round(dark + (light - dark) * t);
+    return toHex(v, v, v);
+}
+/** 点亮结束淡出：从当前深浅逐步压到最暗 */
+function statusBarFadeOutColors(startBrightness, steps = 5) {
+    const start = Math.max(10, Math.min(100, startBrightness));
+    const end = 10;
+    const colors = [];
+    for (let i = 1; i <= steps; i++) {
+        const b = start - ((start - end) * i) / steps;
+        colors.push(statusBarNeutralColor(b));
+    }
+    return colors;
+}
+async function selectStatusBarBrightness() {
+    const config = kanpanConfig();
+    const current = getStatusBarBrightness(config);
+    const presets = [
+        { label: '最亮', brightness: 100, description: '默认，最清晰' },
+        { label: '偏亮', brightness: 80, description: '略压一点' },
+        { label: '适中', brightness: 55, description: '接近点亮后第一档灰' },
+        { label: '偏暗', brightness: 35, description: '更隐蔽' },
+        { label: '很暗', brightness: 20, description: '接近淡出末档' },
+        { label: '自定义…', brightness: -1, description: '输入 10–100' },
+    ];
+    const picked = await vscode.window.showQuickPick(presets.map((item) => ({
+        label: item.brightness === current ? `$(check) ${item.label}` : item.label,
+        description: item.brightness > 0 ? `${item.brightness}%` : undefined,
+        detail: item.description,
+        brightness: item.brightness,
+    })), {
+        title: '看盘插件 - 底部字体深浅',
+        placeHolder: `当前 ${current}%`,
+    });
+    if (!picked) {
+        return;
+    }
+    let next = picked.brightness;
+    if (next < 0) {
+        const input = await vscode.window.showInputBox({
+            prompt: '底部字体深浅（10 最暗，100 最亮）',
+            value: String(current),
+            validateInput: (value) => {
+                const n = Number(value);
+                if (!Number.isFinite(n) || n < 10 || n > 100) {
+                    return '请输入 10–100 的数字';
+                }
+                return undefined;
+            },
+        });
+        if (!input) {
+            return;
+        }
+        next = Math.round(Number(input));
+    }
+    await config.update('statusBarBrightness', next, vscode.ConfigurationTarget.Global);
+    vscode.window.showInformationMessage(`底部字体深浅已设为 ${next}%`);
 }
 function coloredTrendIcon(up, color) {
     const path = up ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6';

@@ -43,6 +43,7 @@ const quoteDecoration_1 = require("./quoteDecoration");
 const reorder_1 = require("./sidebar/reorder");
 const treeProviders_1 = require("./sidebar/treeProviders");
 const priceAlerts_1 = require("./priceAlerts");
+const stealthNotify_1 = require("./stealthNotify");
 const BINANCE_PAIRS_STORAGE_KEY = 'kanpan.binanceTradingPairs';
 async function moveItem(item, direction, marketService, refresh) {
     if (!item?.nodeId) {
@@ -55,6 +56,7 @@ async function moveItem(item, direction, marketService, refresh) {
 }
 async function activate(context) {
     (0, treeProviders_1.bindExtensionContext)(context);
+    (0, stealthNotify_1.initStealthNotify)(context);
     await (0, colorSettings_1.initKanpanThemeColors)();
     (0, providers_1.initBinancePairsCache)(context.globalState.get(BINANCE_PAIRS_STORAGE_KEY), (snapshot) => {
         void context.globalState.update(BINANCE_PAIRS_STORAGE_KEY, snapshot);
@@ -203,6 +205,10 @@ async function activate(context) {
         cryptoProvider.refresh();
         settingsProvider.refresh();
         quoteDecoration.refresh();
+        void marketService.refresh();
+    }), vscode.commands.registerCommand('kanpan.setStatusBarBrightness', async () => {
+        await (0, colorSettings_1.selectStatusBarBrightness)();
+        settingsProvider.refresh();
         void marketService.refresh();
     }), vscode.workspace.onDidChangeConfiguration(async (event) => {
         if (event.affectsConfiguration('kanpan')) {

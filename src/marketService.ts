@@ -28,7 +28,9 @@ import {
   applyStatusBarItemColors,
   clearStatusBarItemColors,
   getRiseFallColors,
+  getStatusBarBrightness,
   shouldUseNeutralColors,
+  statusBarFadeOutColors,
 } from './colorSettings';
 import {
   indexInWatchList,
@@ -318,13 +320,12 @@ export class MarketService {
       return;
     }
 
-    const steps = [
-      { delay: 0, color: '#9e9e9e' },
-      { delay: 200, color: '#757575' },
-      { delay: 400, color: '#616161' },
-      { delay: 600, color: '#424242' },
-      { delay: 800, color: '#2d2d2d' },
-    ];
+    const brightness = getStatusBarBrightness(getConfig());
+    const fadeColors = statusBarFadeOutColors(brightness);
+    const steps = fadeColors.map((color, index) => ({
+      delay: index * 200,
+      color,
+    }));
 
     for (const step of steps) {
       const timer = setTimeout(() => {
@@ -350,7 +351,7 @@ export class MarketService {
         item.statusBarItem.hide();
       }
       this.updateStatusBarControls(getConfig());
-    }, 1000);
+    }, Math.max(fadeColors.length, 1) * 200);
     this.peekFadeTimers.push(done);
   }
 
@@ -882,6 +883,7 @@ export class MarketService {
     }
 
     const monochrome = shouldUseNeutralColors(config);
+    const brightness = getStatusBarBrightness(config);
     const showChangePercent = config.get<boolean>('showChangePercent', true);
     const { rise: riseColor, fall: fallColor } = getRiseFallColors(config);
     const format = config.get<string>('format', '{symbol} {price} {change} {icon}');
@@ -916,7 +918,14 @@ export class MarketService {
         ? renderFormat(format, label, quote.price, quote.changePercent, !monochrome)
         : `${label} ${priceText}`;
 
-      applyStatusBarItemColors(item.statusBarItem, quote.changePercent, monochrome, riseColor, fallColor);
+      applyStatusBarItemColors(
+        item.statusBarItem,
+        quote.changePercent,
+        monochrome,
+        riseColor,
+        fallColor,
+        brightness
+      );
 
       item.statusBarItem.tooltip = [
         formatQuoteTooltip(quote),

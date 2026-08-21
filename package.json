@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.7.0",
+  "version": "0.7.4",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -169,6 +169,11 @@
         "command": "kanpan.setFallColor",
         "title": "设置下跌颜色",
         "icon": "$(arrow-down)"
+      },
+      {
+        "command": "kanpan.setStatusBarBrightness",
+        "title": "看盘插件: 底部字体深浅",
+        "icon": "$(eye)"
       },
       {
         "command": "kanpan.moveUp",
@@ -511,6 +516,13 @@
           "default": 5,
           "minimum": 1,
           "description": "点按点亮模式下，点亮后保持显示的秒数（之后约 1 秒淡出）"
+        },
+        "kanpan.statusBarBrightness": {
+          "type": "number",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 100,
+          "description": "底部状态栏行情文字深浅（10 最暗，100 最亮）。侧边栏设置也可快捷选择，档位对齐点亮淡出梯度"
         },
         "kanpan.enabled": {
           "type": "boolean",

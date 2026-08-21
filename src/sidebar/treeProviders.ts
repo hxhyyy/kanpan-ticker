@@ -1,5 +1,11 @@
 import * as vscode from 'vscode';
-import { coloredTrendIcon, getColorSchemeLabel, getRiseFallColors, shouldUseNeutralColors } from '../colorSettings';
+import {
+  coloredTrendIcon,
+  getColorSchemeLabel,
+  getRiseFallColors,
+  getStatusBarBrightness,
+  shouldUseNeutralColors,
+} from '../colorSettings';
 import { quoteDecorationUri } from '../quoteDecoration';
 import { formatChangePercent, formatPrice } from '../providers';
 import { normalizeAShareCode } from '../aShareSources';
@@ -332,6 +338,7 @@ export class SettingsTreeProvider implements vscode.TreeDataProvider<KanpanTreeI
   getChildren(): KanpanTreeItem[] {
     const source = currentStockSourceLabel();
     const { scheme, rise, fall } = getRiseFallColors();
+    const brightness = getStatusBarBrightness();
 
     const items: KanpanTreeItem[] = [
       new KanpanTreeItem('settings-color-scheme', '涨跌颜色方案', vscode.TreeItemCollapsibleState.None, {
@@ -340,6 +347,17 @@ export class SettingsTreeProvider implements vscode.TreeDataProvider<KanpanTreeI
         tooltip: '美国惯例：绿涨红跌\n中国惯例：红涨绿跌\n无颜色：涨跌不着色\n也可选手动自定义',
         command: { command: 'kanpan.selectColorScheme', title: '选择涨跌颜色' },
       }),
+      new KanpanTreeItem(
+        'settings-status-brightness',
+        '底部字体深浅',
+        vscode.TreeItemCollapsibleState.None,
+        {
+          iconId: 'eye',
+          description: `${brightness}%`,
+          tooltip: '调整状态栏行情文字深浅（10 最暗，100 最亮）\n档位对齐点亮后的淡出梯度',
+          command: { command: 'kanpan.setStatusBarBrightness', title: '设置底部字体深浅' },
+        }
+      ),
     ];
 
     if (scheme === 'custom') {
