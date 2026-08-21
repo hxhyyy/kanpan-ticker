@@ -69,6 +69,31 @@ function displayLabel(symbol, name) {
 function isPctCondition(condition) {
     return condition === 'pct_up' || condition === 'pct_down' || condition === 'pct_both';
 }
+function isStepCondition(condition) {
+    return condition === 'step';
+}
+/** 价格所在的梯度档位，如 step=1000、价=67432 → 67 */
+function stepBucket(price, step) {
+    return Math.floor(price / step);
+}
+function suggestStepSize(currentPrice) {
+    if (!currentPrice || currentPrice <= 0) {
+        return '1000';
+    }
+    if (currentPrice >= 10000) {
+        return '1000';
+    }
+    if (currentPrice >= 1000) {
+        return '100';
+    }
+    if (currentPrice >= 100) {
+        return '10';
+    }
+    if (currentPrice >= 1) {
+        return '1';
+    }
+    return '0.01';
+}
 function sameLocalDay(a, b) {
     const da = new Date(a);
     const db = new Date(b);
@@ -118,6 +143,8 @@ function conditionLabel(condition) {
             return '低于';
         case 'crosses':
             return '触及';
+        case 'step':
+            return '梯度';
         case 'pct_up':
             return '上涨达到';
         case 'pct_down':
@@ -141,6 +168,9 @@ function formatAlertTreeLabel(alert) {
     if (isPctCondition(alert.condition)) {
         return `${conditionLabel(alert.condition)} ${alert.value}%`;
     }
+    if (isStepCondition(alert.condition)) {
+        return `每 ${(0, providers_1.formatPrice)(alert.value)} 一档`;
+    }
     return `${conditionLabel(alert.condition)} ${(0, providers_1.formatPrice)(alert.value)}`;
 }
 function formatAlertTreeDescription(alert) {
@@ -158,6 +188,9 @@ function formatAlertSummary(alert) {
     const label = displayLabel(symbol);
     if (isPctCondition(alert.condition)) {
         return `${label} ${conditionLabel(alert.condition)} ${alert.value}% · ${frequencyLabel(alert.frequency)}`;
+    }
+    if (isStepCondition(alert.condition)) {
+        return `${label} 每 ${(0, providers_1.formatPrice)(alert.value)} 关键点位 · ${frequencyLabel(alert.frequency)}`;
     }
     return `${label} ${conditionLabel(alert.condition)} ${(0, providers_1.formatPrice)(alert.value)} · ${frequencyLabel(alert.frequency)}`;
 }
@@ -195,6 +228,22 @@ function isConditionMet(alert, price) {
                 return false;
             }
             return (prev < alert.value && price >= alert.value) || (prev > alert.value && price <= alert.value);
+        }
+        case 'step': {
+            const step = alert.value;
+            if (!Number.isFinite(step) || step <= 0) {
+                return false;
+            }
+            const currBucket = stepBucket(price, step);
+            // 优先用专用档位字段；没有则退回用上次价格推算
+            if (typeof alert.lastStepBucket === 'number' && Number.isFinite(alert.lastStepBucket)) {
+                return alert.lastStepBucket !== currBucket;
+            }
+            const prev = alert.lastSeenPrice;
+            if (prev === undefined || !Number.isFinite(prev)) {
+                return false;
+            }
+            return stepBucket(prev, step) !== currBucket;
         }
         case 'pct_up': {
             const base = alert.baselinePrice;
@@ -235,6 +284,16 @@ async function evaluatePriceAlerts(context, marketKey, quote) {
     const fired = [];
     for (const alert of related) {
         const price = quote.price;
+        const prevPrice = alert.lastSeenPrice;
+        // 梯度：首次见到价格时只初始化档位，不提醒（避免一创建就弹）
+        if (isStepCondition(alert.condition) && typeof alert.lastStepBucket !== 'number') {
+            if (Number.isFinite(price) && alert.value > 0) {
+                alert.lastStepBucket = stepBucket(price, alert.value);
+                alert.lastSeenPrice = price;
+                changed = true;
+            }
+            continue;
+        }
         const met = isConditionMet(alert, price);
         const shouldNotify = met && canFire(alert, now);
         if (shouldNotify) {
@@ -244,13 +303,24 @@ async function evaluatePriceAlerts(context, marketKey, quote) {
                 alert.enabled = false;
             }
             if (isPctCondition(alert.condition) && (alert.frequency === 'always' || alert.frequency === 'daily')) {
-                // 触发后重置基准，便于下一次按幅度再提醒
                 alert.baselinePrice = price;
             }
-            changed = true;
-        }
-        if (alert.lastSeenPrice !== price) {
+            if (isStepCondition(alert.condition) && alert.value > 0) {
+                alert.lastStepBucket = stepBucket(price, alert.value);
+            }
             alert.lastSeenPrice = price;
+            changed = true;
+            continue;
+        }
+        // 条件已满足但被冷却/频率拦住：不要推进锚点，否则会漏报关键点位
+        if (met && !shouldNotify) {
+            continue;
+        }
+        if (prevPrice !== price) {
+            alert.lastSeenPrice = price;
+            if (isStepCondition(alert.condition) && alert.value > 0) {
+                alert.lastStepBucket = stepBucket(price, alert.value);
+            }
             changed = true;
         }
     }
@@ -269,30 +339,39 @@ async function pickCondition() {
         { label: '价格高于', description: '现价 ≥ 目标价', condition: 'above' },
         { label: '价格低于', description: '现价 ≤ 目标价', condition: 'below' },
         { label: '价格触及', description: '涨到或跌到该价都提醒', condition: 'crosses' },
+        {
+            label: '梯度关键点',
+            description: '每涨跌一个步长提醒，如每 1000 → 67000、68000…',
+            condition: 'step',
+        },
         { label: '上涨达到', description: '相对设置时现价上涨 X%', condition: 'pct_up' },
         { label: '下跌达到', description: '相对设置时现价下跌 X%', condition: 'pct_down' },
         { label: '涨跌幅达到', description: '相对设置时现价双向变动 X%', condition: 'pct_both' },
     ], { placeHolder: '选择提醒条件' });
     return picked?.condition;
 }
-async function pickFrequency() {
-    const picked = await vscode.window.showQuickPick([
+async function pickFrequency(preferAlways = false) {
+    const items = [
         { label: '仅一次', description: '触发后自动关闭', frequency: 'once' },
         { label: '每天一次', description: '同一天最多提醒一次', frequency: 'daily' },
         {
             label: '每次触发',
-            description: '条件满足就提醒（可设冷却，避免刷屏）',
+            description: preferAlways
+                ? '推荐：每跨一档关键点都提醒（可设冷却）'
+                : '条件满足就提醒（可设冷却，避免刷屏）',
             frequency: 'always',
         },
-    ], { placeHolder: '选择提醒频率' });
+    ];
+    const picked = await vscode.window.showQuickPick(preferAlways ? [items[2], items[0], items[1]] : items, { placeHolder: preferAlways ? '梯度提醒建议选「每次触发」' : '选择提醒频率' });
     return picked?.frequency;
 }
-async function pickCooldownMinutes() {
-    const defaultCooldown = getKanpanConfig().get('alertCooldownMinutes', 10);
+async function pickCooldownMinutes(defaultMinutes) {
+    const fallback = getKanpanConfig().get('alertCooldownMinutes', 10);
+    const initial = defaultMinutes ?? fallback;
     const input = await vscode.window.showInputBox({
         prompt: '冷却时间（分钟）。同一提醒在冷却期内不会重复弹出',
-        placeHolder: String(defaultCooldown),
-        value: String(defaultCooldown),
+        placeHolder: String(initial),
+        value: String(initial),
         validateInput: (value) => {
             const n = Number(value.trim());
             if (!Number.isFinite(n) || n < 0) {
@@ -338,6 +417,28 @@ async function createPriceAlert(context, marketKey, currentPrice) {
         value = Number(pctInput.trim());
         baselinePrice = currentPrice;
     }
+    else if (isStepCondition(condition)) {
+        const suggested = suggestStepSize(currentPrice);
+        const exampleLevel = currentPrice && currentPrice > 0
+            ? (0, providers_1.formatPrice)(Math.floor(currentPrice / Number(suggested)) * Number(suggested))
+            : '67000';
+        const stepInput = await vscode.window.showInputBox({
+            prompt: `输入梯度步长（例如 ${suggested}：每到 ${exampleLevel}、下一档…就提醒）`,
+            placeHolder: suggested,
+            value: suggested,
+            validateInput: (v) => {
+                const n = Number(v.trim());
+                if (!Number.isFinite(n) || n <= 0) {
+                    return '请输入大于 0 的步长';
+                }
+                return undefined;
+            },
+        });
+        if (!stepInput) {
+            return;
+        }
+        value = Number(stepInput.trim());
+    }
     else {
         const priceInput = await vscode.window.showInputBox({
             prompt: `输入目标价格${currentPrice ? `（当前 ${(0, providers_1.formatPrice)(currentPrice)}）` : ''}`,
@@ -356,13 +457,14 @@ async function createPriceAlert(context, marketKey, currentPrice) {
         }
         value = Number(priceInput.trim());
     }
-    const frequency = await pickFrequency();
+    const frequency = await pickFrequency(isStepCondition(condition));
     if (!frequency) {
         return;
     }
     let cooldownMinutes;
     if (frequency === 'always') {
-        cooldownMinutes = await pickCooldownMinutes();
+        // 梯度提醒默认少冷却，避免连涨时漏档
+        cooldownMinutes = await pickCooldownMinutes(isStepCondition(condition) ? 0 : undefined);
         if (cooldownMinutes === undefined) {
             return;
         }
@@ -377,6 +479,9 @@ async function createPriceAlert(context, marketKey, currentPrice) {
         cooldownMinutes,
         enabled: true,
         lastSeenPrice: currentPrice,
+        lastStepBucket: isStepCondition(condition) && currentPrice && currentPrice > 0 && value > 0
+            ? stepBucket(currentPrice, value)
+            : undefined,
         createdAt: Date.now(),
     };
     const alerts = getPriceAlerts(context);

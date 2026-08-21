@@ -832,9 +832,11 @@ export class MarketService {
           : type === 'ashare'
             ? await fetchAShareQuote(symbol)
             : await fetchCryptoQuote(symbol);
+      // 先用最新价检查提醒，避免被均量请求拖住/拖死导致漏报
+      this.store.setQuote(key, quote);
+      void evaluatePriceAlerts(this.context, key, quote);
       const enriched = await this.store.enrichQuoteWithVolumeStats(type, symbol, quote);
       this.store.setQuote(key, enriched);
-      void evaluatePriceAlerts(this.context, key, enriched);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.store.setError(key, message);

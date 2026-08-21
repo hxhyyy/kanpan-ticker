@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.6.4",
+  "version": "0.6.7",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -494,8 +494,8 @@
             "仅 Cursor/VS Code 编辑器内角标",
             "系统通知 + 编辑器角标同时弹出"
           ],
-          "default": "system",
-          "description": "价格提醒的通知方式。文案仅为现价数字"
+          "default": "both",
+          "description": "价格提醒的通知方式。文案仅为现价数字。推荐 both，避免系统通知被静默拦截"
         },
         "kanpan.statusBarStealth": {
           "type": "boolean",
