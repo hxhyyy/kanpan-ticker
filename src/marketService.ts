@@ -218,6 +218,16 @@ export class MarketService {
     symbol: string;
     statusBarItem: vscode.StatusBarItem;
   }> = [];
+  /** 隐身模式下的「点一下看行情」按钮 */
+  private peekControlItem: vscode.StatusBarItem | undefined;
+  /** 切换「点按 / 常亮」模式 */
+  private modeControlItem: vscode.StatusBarItem | undefined;
+  private peekVisible = false;
+  private peekHideTimer: NodeJS.Timeout | undefined;
+  private peekFadeTimers: NodeJS.Timeout[] = [];
+  private peekGeneration = 0;
+
+  private static readonly DISPLAY_MODE_STATE_KEY = 'statusBarDisplayMode';
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -233,12 +243,191 @@ export class MarketService {
 
   setStatusVisible(visible: boolean): void {
     this.statusVisible = visible;
+    this.clearPeekTimers();
+    this.peekVisible = false;
     for (const item of this.statusItems) {
       item.statusBarItem.hide();
     }
+    this.peekControlItem?.hide();
+    this.modeControlItem?.hide();
     if (visible) {
       void this.refresh();
     }
+  }
+
+  /** 点亮底部行情：仅「点按」模式有效 */
+  peekStatusBar(): void {
+    const config = getConfig();
+    if (this.getStatusBarDisplayMode() !== 'peek') {
+      void this.refresh();
+      return;
+    }
+    if (!this.statusVisible || !config.get<boolean>('enabled', true)) {
+      return;
+    }
+
+    this.clearPeekTimers();
+    this.peekVisible = true;
+    this.peekGeneration += 1;
+    const generation = this.peekGeneration;
+
+    this.updateStatusBar(config);
+    this.updateStatusBarControls(config);
+
+    const peekSeconds = Math.max(config.get<number>('statusBarPeekSeconds', 5), 1);
+    this.peekHideTimer = setTimeout(() => {
+      void this.fadeOutAndHidePeek(generation);
+    }, peekSeconds * 1000);
+  }
+
+  /** 一键切换：点按点亮 ↔ 一直常亮（存在 globalState，不用改设置） */
+  async toggleStatusBarDisplayMode(): Promise<void> {
+    const next = this.getStatusBarDisplayMode() === 'peek' ? 'always' : 'peek';
+    await this.context.globalState.update(MarketService.DISPLAY_MODE_STATE_KEY, next);
+    this.clearPeekTimers();
+    this.peekVisible = next === 'always';
+    this.updateStatusBar(getConfig());
+  }
+
+  private clearPeekTimers(): void {
+    if (this.peekHideTimer) {
+      clearTimeout(this.peekHideTimer);
+      this.peekHideTimer = undefined;
+    }
+    for (const timer of this.peekFadeTimers) {
+      clearTimeout(timer);
+    }
+    this.peekFadeTimers = [];
+  }
+
+  private async fadeOutAndHidePeek(generation: number): Promise<void> {
+    if (generation !== this.peekGeneration || !this.peekVisible) {
+      return;
+    }
+    if (this.getStatusBarDisplayMode() !== 'peek') {
+      return;
+    }
+
+    const steps = [
+      { delay: 0, color: '#9e9e9e' },
+      { delay: 200, color: '#757575' },
+      { delay: 400, color: '#616161' },
+      { delay: 600, color: '#424242' },
+      { delay: 800, color: '#2d2d2d' },
+    ];
+
+    for (const step of steps) {
+      const timer = setTimeout(() => {
+        if (generation !== this.peekGeneration || !this.peekVisible) {
+          return;
+        }
+        for (const item of this.statusItems) {
+          item.statusBarItem.color = step.color;
+        }
+      }, step.delay);
+      this.peekFadeTimers.push(timer);
+    }
+
+    const done = setTimeout(() => {
+      if (generation !== this.peekGeneration) {
+        return;
+      }
+      if (this.getStatusBarDisplayMode() !== 'peek') {
+        return;
+      }
+      this.peekVisible = false;
+      for (const item of this.statusItems) {
+        item.statusBarItem.hide();
+      }
+      this.updateStatusBarControls(getConfig());
+    }, 1000);
+    this.peekFadeTimers.push(done);
+  }
+
+  /** peek = 点按点亮；always = 一直常亮 */
+  private getStatusBarDisplayMode(): 'peek' | 'always' {
+    const fromState = this.context.globalState.get<string>(MarketService.DISPLAY_MODE_STATE_KEY);
+    if (fromState === 'peek' || fromState === 'always') {
+      return fromState;
+    }
+    const config = getConfig();
+    const mode = config.get<string>('statusBarDisplayMode');
+    if (mode === 'peek' || mode === 'always') {
+      return mode;
+    }
+    return config.get<boolean>('statusBarStealth', true) ? 'peek' : 'always';
+  }
+
+  private isPeekMode(): boolean {
+    return this.getStatusBarDisplayMode() === 'peek';
+  }
+
+  private shouldShowQuoteItems(config: vscode.WorkspaceConfiguration): boolean {
+    if (!this.statusVisible || !config.get<boolean>('enabled', true)) {
+      return false;
+    }
+    if (!this.isPeekMode()) {
+      return true;
+    }
+    return this.peekVisible;
+  }
+
+  private ensureStatusBarControls(): void {
+    if (!this.peekControlItem) {
+      const peek = vscode.window.createStatusBarItem(this.getStatusBarAlignment(), 111);
+      peek.command = 'kanpan.peekStatusBar';
+      this.context.subscriptions.push(peek);
+      this.peekControlItem = peek;
+    }
+    if (!this.modeControlItem) {
+      const mode = vscode.window.createStatusBarItem(this.getStatusBarAlignment(), 112);
+      mode.command = 'kanpan.toggleStatusBarDisplayMode';
+      this.context.subscriptions.push(mode);
+      this.modeControlItem = mode;
+    }
+  }
+
+  private updateStatusBarControls(config: vscode.WorkspaceConfiguration): void {
+    if (!this.statusVisible || !config.get<boolean>('enabled', true)) {
+      this.peekControlItem?.hide();
+      this.modeControlItem?.hide();
+      return;
+    }
+
+    this.ensureStatusBarControls();
+    const peekSeconds = Math.max(config.get<number>('statusBarPeekSeconds', 5), 1);
+    const mode = this.getStatusBarDisplayMode();
+
+    if (this.modeControlItem) {
+      if (mode === 'always') {
+        this.modeControlItem.text = '$(pinned)';
+        this.modeControlItem.tooltip = '常亮中 · 点击切换为「点按点亮」';
+      } else {
+        this.modeControlItem.text = '$(pin)';
+        this.modeControlItem.tooltip = '点按模式 · 点击切换为「一直常亮」';
+      }
+      this.modeControlItem.show();
+    }
+
+    if (this.peekControlItem) {
+      if (mode === 'always') {
+        // 常亮时不需要点亮按钮，避免占位
+        this.peekControlItem.hide();
+      } else if (this.peekVisible) {
+        this.peekControlItem.text = '$(eye)';
+        this.peekControlItem.tooltip = `显示中 · 约 ${peekSeconds} 秒后淡出\n再点可续亮`;
+        this.peekControlItem.show();
+      } else {
+        this.peekControlItem.text = '$(eye-closed)';
+        this.peekControlItem.tooltip = `点击查看行情（约 ${peekSeconds} 秒后淡出）`;
+        this.peekControlItem.show();
+      }
+    }
+  }
+
+  /** @deprecated 兼容旧调用名 */
+  private updatePeekControl(config: vscode.WorkspaceConfiguration): void {
+    this.updateStatusBarControls(config);
   }
 
   async refresh(): Promise<void> {
@@ -653,7 +842,9 @@ export class MarketService {
   }
 
   private updateStatusBar(config: vscode.WorkspaceConfiguration): void {
-    if (!this.statusVisible || !config.get<boolean>('enabled', true)) {
+    this.updateStatusBarControls(config);
+
+    if (!this.shouldShowQuoteItems(config)) {
       for (const item of this.statusItems) {
         item.statusBarItem.hide();
       }
@@ -664,10 +855,13 @@ export class MarketService {
     const showChangePercent = config.get<boolean>('showChangePercent', true);
     const { rise: riseColor, fall: fallColor } = getRiseFallColors(config);
     const format = config.get<string>('format', '{symbol} {price} {change} {icon}');
+    const peekMode = this.isPeekMode();
 
     for (const item of this.statusItems) {
       const cached = this.store.get(item.key);
       const label = getDisplayLabel(item.symbol, cached?.quote?.name);
+      // 点按模式下点击行情 = 续亮
+      item.statusBarItem.command = peekMode ? 'kanpan.peekStatusBar' : 'kanpan.refresh';
 
       if (cached?.error) {
         item.statusBarItem.text = `$(warning) ${label}`;
@@ -687,7 +881,6 @@ export class MarketService {
 
       const quote = cached.quote;
       const priceText = formatPrice(quote.price);
-      const changeText = formatChangePercent(quote.changePercent);
 
       item.statusBarItem.text = showChangePercent
         ? renderFormat(format, label, quote.price, quote.changePercent, !monochrome)
@@ -698,7 +891,7 @@ export class MarketService {
       item.statusBarItem.tooltip = [
         formatQuoteTooltip(quote),
         '',
-        '点击刷新',
+        peekMode ? '点击续亮底部行情' : '点击刷新',
       ].join('\n');
       item.statusBarItem.show();
     }
@@ -715,6 +908,8 @@ export class MarketService {
   }
 
   private rebuildStatusItems(): void {
+    this.clearPeekTimers();
+    this.peekVisible = this.getStatusBarDisplayMode() === 'always';
     for (const item of this.statusItems) {
       item.statusBarItem.dispose();
     }
@@ -726,6 +921,7 @@ export class MarketService {
       const parsed = parseMarketKey(key);
       this.statusItems.push(this.createStatusItem(parsed.type, parsed.symbol, priority--));
     }
+    this.updateStatusBarControls(getConfig());
   }
 
   private lastStatusBarPosition: string | undefined;

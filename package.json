@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.6.2",
+  "version": "0.6.4",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -107,6 +107,14 @@
       {
         "command": "kanpan.hide",
         "title": "看盘插件: 隐藏状态栏"
+      },
+      {
+        "command": "kanpan.peekStatusBar",
+        "title": "看盘插件: 点亮底部行情"
+      },
+      {
+        "command": "kanpan.toggleStatusBarDisplayMode",
+        "title": "看盘插件: 切换常亮/点按"
       },
       {
         "command": "kanpan.addStock",
@@ -488,6 +496,17 @@
           ],
           "default": "system",
           "description": "价格提醒的通知方式。文案仅为现价数字"
+        },
+        "kanpan.statusBarStealth": {
+          "type": "boolean",
+          "default": true,
+          "description": "（已由底部图钉按钮取代）兼容旧配置：true=点按点亮，false=常亮"
+        },
+        "kanpan.statusBarPeekSeconds": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "点按点亮模式下，点亮后保持显示的秒数（之后约 1 秒淡出）"
         },
         "kanpan.enabled": {
           "type": "boolean",

@@ -80,7 +80,7 @@ async function activate(context) {
         await marketService.refresh();
         stockProvider.refresh();
         cryptoProvider.refresh();
-    }), vscode.commands.registerCommand('kanpan.show', () => marketService.setStatusVisible(true)), vscode.commands.registerCommand('kanpan.hide', () => marketService.setStatusVisible(false)), vscode.commands.registerCommand('kanpan.addStock', () => marketService.addStock()), vscode.commands.registerCommand('kanpan.addAShare', async () => {
+    }), vscode.commands.registerCommand('kanpan.show', () => marketService.setStatusVisible(true)), vscode.commands.registerCommand('kanpan.hide', () => marketService.setStatusVisible(false)), vscode.commands.registerCommand('kanpan.peekStatusBar', () => marketService.peekStatusBar()), vscode.commands.registerCommand('kanpan.toggleStatusBarDisplayMode', () => marketService.toggleStatusBarDisplayMode()), vscode.commands.registerCommand('kanpan.addStock', () => marketService.addStock()), vscode.commands.registerCommand('kanpan.addAShare', async () => {
         await marketService.addAShare();
         stockProvider.refresh();
     }), vscode.commands.registerCommand('kanpan.addCrypto', () => marketService.addCrypto()), vscode.commands.registerCommand('kanpan.moveUp', async (item) => {

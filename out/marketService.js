@@ -191,6 +191,9 @@ class MarketService {
         this.store = store;
         this.statusVisible = true;
         this.statusItems = [];
+        this.peekVisible = false;
+        this.peekFadeTimers = [];
+        this.peekGeneration = 0;
     }
     start() {
         void this.ensureStatusBarDefaults().then(() => {
@@ -200,12 +203,175 @@ class MarketService {
     }
     setStatusVisible(visible) {
         this.statusVisible = visible;
+        this.clearPeekTimers();
+        this.peekVisible = false;
         for (const item of this.statusItems) {
             item.statusBarItem.hide();
         }
+        this.peekControlItem?.hide();
+        this.modeControlItem?.hide();
         if (visible) {
             void this.refresh();
         }
+    }
+    /** 点亮底部行情：仅「点按」模式有效 */
+    peekStatusBar() {
+        const config = getConfig();
+        if (this.getStatusBarDisplayMode() !== 'peek') {
+            void this.refresh();
+            return;
+        }
+        if (!this.statusVisible || !config.get('enabled', true)) {
+            return;
+        }
+        this.clearPeekTimers();
+        this.peekVisible = true;
+        this.peekGeneration += 1;
+        const generation = this.peekGeneration;
+        this.updateStatusBar(config);
+        this.updateStatusBarControls(config);
+        const peekSeconds = Math.max(config.get('statusBarPeekSeconds', 5), 1);
+        this.peekHideTimer = setTimeout(() => {
+            void this.fadeOutAndHidePeek(generation);
+        }, peekSeconds * 1000);
+    }
+    /** 一键切换：点按点亮 ↔ 一直常亮（存在 globalState，不用改设置） */
+    async toggleStatusBarDisplayMode() {
+        const next = this.getStatusBarDisplayMode() === 'peek' ? 'always' : 'peek';
+        await this.context.globalState.update(MarketService.DISPLAY_MODE_STATE_KEY, next);
+        this.clearPeekTimers();
+        this.peekVisible = next === 'always';
+        this.updateStatusBar(getConfig());
+    }
+    clearPeekTimers() {
+        if (this.peekHideTimer) {
+            clearTimeout(this.peekHideTimer);
+            this.peekHideTimer = undefined;
+        }
+        for (const timer of this.peekFadeTimers) {
+            clearTimeout(timer);
+        }
+        this.peekFadeTimers = [];
+    }
+    async fadeOutAndHidePeek(generation) {
+        if (generation !== this.peekGeneration || !this.peekVisible) {
+            return;
+        }
+        if (this.getStatusBarDisplayMode() !== 'peek') {
+            return;
+        }
+        const steps = [
+            { delay: 0, color: '#9e9e9e' },
+            { delay: 200, color: '#757575' },
+            { delay: 400, color: '#616161' },
+            { delay: 600, color: '#424242' },
+            { delay: 800, color: '#2d2d2d' },
+        ];
+        for (const step of steps) {
+            const timer = setTimeout(() => {
+                if (generation !== this.peekGeneration || !this.peekVisible) {
+                    return;
+                }
+                for (const item of this.statusItems) {
+                    item.statusBarItem.color = step.color;
+                }
+            }, step.delay);
+            this.peekFadeTimers.push(timer);
+        }
+        const done = setTimeout(() => {
+            if (generation !== this.peekGeneration) {
+                return;
+            }
+            if (this.getStatusBarDisplayMode() !== 'peek') {
+                return;
+            }
+            this.peekVisible = false;
+            for (const item of this.statusItems) {
+                item.statusBarItem.hide();
+            }
+            this.updateStatusBarControls(getConfig());
+        }, 1000);
+        this.peekFadeTimers.push(done);
+    }
+    /** peek = 点按点亮；always = 一直常亮 */
+    getStatusBarDisplayMode() {
+        const fromState = this.context.globalState.get(MarketService.DISPLAY_MODE_STATE_KEY);
+        if (fromState === 'peek' || fromState === 'always') {
+            return fromState;
+        }
+        const config = getConfig();
+        const mode = config.get('statusBarDisplayMode');
+        if (mode === 'peek' || mode === 'always') {
+            return mode;
+        }
+        return config.get('statusBarStealth', true) ? 'peek' : 'always';
+    }
+    isPeekMode() {
+        return this.getStatusBarDisplayMode() === 'peek';
+    }
+    shouldShowQuoteItems(config) {
+        if (!this.statusVisible || !config.get('enabled', true)) {
+            return false;
+        }
+        if (!this.isPeekMode()) {
+            return true;
+        }
+        return this.peekVisible;
+    }
+    ensureStatusBarControls() {
+        if (!this.peekControlItem) {
+            const peek = vscode.window.createStatusBarItem(this.getStatusBarAlignment(), 111);
+            peek.command = 'kanpan.peekStatusBar';
+            this.context.subscriptions.push(peek);
+            this.peekControlItem = peek;
+        }
+        if (!this.modeControlItem) {
+            const mode = vscode.window.createStatusBarItem(this.getStatusBarAlignment(), 112);
+            mode.command = 'kanpan.toggleStatusBarDisplayMode';
+            this.context.subscriptions.push(mode);
+            this.modeControlItem = mode;
+        }
+    }
+    updateStatusBarControls(config) {
+        if (!this.statusVisible || !config.get('enabled', true)) {
+            this.peekControlItem?.hide();
+            this.modeControlItem?.hide();
+            return;
+        }
+        this.ensureStatusBarControls();
+        const peekSeconds = Math.max(config.get('statusBarPeekSeconds', 5), 1);
+        const mode = this.getStatusBarDisplayMode();
+        if (this.modeControlItem) {
+            if (mode === 'always') {
+                this.modeControlItem.text = '$(pinned)';
+                this.modeControlItem.tooltip = '常亮中 · 点击切换为「点按点亮」';
+            }
+            else {
+                this.modeControlItem.text = '$(pin)';
+                this.modeControlItem.tooltip = '点按模式 · 点击切换为「一直常亮」';
+            }
+            this.modeControlItem.show();
+        }
+        if (this.peekControlItem) {
+            if (mode === 'always') {
+                // 常亮时不需要点亮按钮，避免占位
+                this.peekControlItem.hide();
+            }
+            else if (this.peekVisible) {
+                this.peekControlItem.text = '$(eye)';
+                this.peekControlItem.tooltip = `显示中 · 约 ${peekSeconds} 秒后淡出\n再点可续亮`;
+                this.peekControlItem.show();
+            }
+            else {
+                this.peekControlItem.text = '$(eye-closed)';
+                this.peekControlItem.tooltip = `点击查看行情（约 ${peekSeconds} 秒后淡出）`;
+                this.peekControlItem.show();
+            }
+        }
+    }
+    /** @deprecated 兼容旧调用名 */
+    updatePeekControl(config) {
+        this.updateStatusBarControls(config);
     }
     async refresh() {
         await Promise.all([this.refreshStocks(), this.refreshCrypto()]);
@@ -534,7 +700,8 @@ class MarketService {
         }
     }
     updateStatusBar(config) {
-        if (!this.statusVisible || !config.get('enabled', true)) {
+        this.updateStatusBarControls(config);
+        if (!this.shouldShowQuoteItems(config)) {
             for (const item of this.statusItems) {
                 item.statusBarItem.hide();
             }
@@ -544,9 +711,12 @@ class MarketService {
         const showChangePercent = config.get('showChangePercent', true);
         const { rise: riseColor, fall: fallColor } = (0, colorSettings_1.getRiseFallColors)(config);
         const format = config.get('format', '{symbol} {price} {change} {icon}');
+        const peekMode = this.isPeekMode();
         for (const item of this.statusItems) {
             const cached = this.store.get(item.key);
             const label = getDisplayLabel(item.symbol, cached?.quote?.name);
+            // 点按模式下点击行情 = 续亮
+            item.statusBarItem.command = peekMode ? 'kanpan.peekStatusBar' : 'kanpan.refresh';
             if (cached?.error) {
                 item.statusBarItem.text = `$(warning) ${label}`;
                 item.statusBarItem.tooltip = `${item.symbol}: ${cached.error}`;
@@ -563,7 +733,6 @@ class MarketService {
             }
             const quote = cached.quote;
             const priceText = (0, providers_1.formatPrice)(quote.price);
-            const changeText = (0, providers_1.formatChangePercent)(quote.changePercent);
             item.statusBarItem.text = showChangePercent
                 ? (0, providers_1.renderFormat)(format, label, quote.price, quote.changePercent, !monochrome)
                 : `${label} ${priceText}`;
@@ -571,7 +740,7 @@ class MarketService {
             item.statusBarItem.tooltip = [
                 (0, stockSources_1.formatQuoteTooltip)(quote),
                 '',
-                '点击刷新',
+                peekMode ? '点击续亮底部行情' : '点击刷新',
             ].join('\n');
             item.statusBarItem.show();
         }
@@ -586,6 +755,8 @@ class MarketService {
         }
     }
     rebuildStatusItems() {
+        this.clearPeekTimers();
+        this.peekVisible = this.getStatusBarDisplayMode() === 'always';
         for (const item of this.statusItems) {
             item.statusBarItem.dispose();
         }
@@ -596,6 +767,7 @@ class MarketService {
             const parsed = parseMarketKey(key);
             this.statusItems.push(this.createStatusItem(parsed.type, parsed.symbol, priority--));
         }
+        this.updateStatusBarControls(getConfig());
     }
     getStatusBarAlignment() {
         const position = getConfig().get('statusBarPosition', 'left');
@@ -623,4 +795,5 @@ class MarketService {
     }
 }
 exports.MarketService = MarketService;
+MarketService.DISPLAY_MODE_STATE_KEY = 'statusBarDisplayMode';
 //# sourceMappingURL=marketService.js.map
