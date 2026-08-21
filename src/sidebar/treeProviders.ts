@@ -4,6 +4,13 @@ import { quoteDecorationUri } from '../quoteDecoration';
 import { formatChangePercent, formatPrice } from '../providers';
 import { normalizeAShareCode } from '../aShareSources';
 import { getDisplayLabel, getConfig, getStockDataSource, getStatusBarItems, MarketStore, marketKeyOf, MarketType } from '../marketService';
+import {
+  formatAlertSummary,
+  formatAlertTreeDescription,
+  formatAlertTreeLabel,
+  getAlertsForMarketKey,
+  PriceAlert,
+} from '../priceAlerts';
 import { sessionLabel } from '../session';
 import { formatQuoteTooltip, getStockSourceLabel } from '../stockSources';
 
@@ -59,14 +66,51 @@ export class KanpanTreeItem extends vscode.TreeItem {
   }
 }
 
-function getContextValue(type: MarketType, inStatusBar: boolean): string {
+function isQuoteMarketKey(nodeId: string): boolean {
+  return /^(stock|ashare|crypto):/.test(nodeId);
+}
+
+function getContextValue(type: MarketType, inStatusBar: boolean, hasAlert: boolean): string {
+  let base: string;
   if (type === 'stock') {
-    return inStatusBar ? 'usStockPinned' : 'usStock';
+    base = inStatusBar ? 'usStockPinned' : 'usStock';
+  } else if (type === 'ashare') {
+    base = inStatusBar ? 'aStockPinned' : 'aStock';
+  } else {
+    base = inStatusBar ? 'cryptoPinned' : 'crypto';
   }
-  if (type === 'ashare') {
-    return inStatusBar ? 'aStockPinned' : 'aStock';
+  return hasAlert ? `${base}Alert` : base;
+}
+
+function buildAlertChildren(marketKey: string): KanpanTreeItem[] {
+  const alerts: PriceAlert[] = extensionContext ? getAlertsForMarketKey(extensionContext, marketKey) : [];
+  const children: KanpanTreeItem[] = [
+    new KanpanTreeItem(`alert-add:${marketKey}`, '添加价格提醒', vscode.TreeItemCollapsibleState.None, {
+      iconId: 'bell',
+      description: '点击设置',
+      tooltip: '在此标的下新增一条价格提醒',
+      contextValue: 'priceAlertAdd',
+      command: { command: 'kanpan.setPriceAlert', title: '设置价格提醒', arguments: [{ nodeId: marketKey }] },
+    }),
+  ];
+
+  for (const alert of alerts) {
+    children.push(
+      new KanpanTreeItem(`alert:${alert.id}`, formatAlertTreeLabel(alert), vscode.TreeItemCollapsibleState.None, {
+        iconId: alert.enabled ? 'bell-dot' : 'bell',
+        description: formatAlertTreeDescription(alert),
+        tooltip: `${formatAlertSummary(alert)}\n点击可启停/删除`,
+        contextValue: 'priceAlert',
+        command: {
+          command: 'kanpan.managePriceAlertItem',
+          title: '管理提醒',
+          arguments: [{ nodeId: `alert:${alert.id}` }],
+        },
+      })
+    );
   }
-  return inStatusBar ? 'cryptoPinned' : 'crypto';
+
+  return children;
 }
 
 function buildQuoteTreeItem(type: MarketType, symbol: string, store: MarketStore): KanpanTreeItem {
@@ -74,22 +118,28 @@ function buildQuoteTreeItem(type: MarketType, symbol: string, store: MarketStore
   const cached = store.get(key);
   const displayName = getDisplayLabel(symbol, cached?.quote?.name);
   const inStatusBar = extensionContext ? getStatusBarItems(extensionContext).includes(key) : false;
-  const contextValue = getContextValue(type, inStatusBar);
+  const alerts = extensionContext ? getAlertsForMarketKey(extensionContext, key) : [];
+  const activeAlerts = alerts.filter((a) => a.enabled).length;
+  const hasAlert = alerts.length > 0;
+  const contextValue = getContextValue(type, inStatusBar, hasAlert);
   const pinPrefix = inStatusBar ? '$(pin) ' : '';
+  const bellPrefix = hasAlert ? `$(bell-dot) ` : '';
+  // 始终可展开：下方直接添加/管理提醒
+  const collapsible = vscode.TreeItemCollapsibleState.Collapsed;
 
   if (cached?.error) {
-    return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
+    return new KanpanTreeItem(key, `${pinPrefix}${bellPrefix}[${displayName}]`, collapsible, {
       description: '加载失败',
-      tooltip: `${symbol}\n${cached.error}${inStatusBar ? '\n已在状态栏显示' : '\n右键可添加到状态栏'}`,
+      tooltip: `${symbol}\n${cached.error}\n展开可设置价格提醒`,
       iconId: 'warning',
       contextValue,
     });
   }
 
   if (!cached?.quote) {
-    return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
+    return new KanpanTreeItem(key, `${pinPrefix}${bellPrefix}[${displayName}]`, collapsible, {
       description: '加载中...',
-      tooltip: symbol,
+      tooltip: `${symbol}\n展开可设置价格提醒`,
       iconId: 'sync~spin',
       contextValue,
     });
@@ -109,6 +159,9 @@ function buildQuoteTreeItem(type: MarketType, symbol: string, store: MarketStore
   const sessionText = quote.session ? sessionLabel(quote.session) : '';
 
   const descParts: string[] = [];
+  if (hasAlert) {
+    descParts.push(activeAlerts > 0 ? `提醒${activeAlerts}` : '提醒(停)');
+  }
   if (showChangePercent) {
     descParts.push(changeText);
   }
@@ -120,9 +173,14 @@ function buildQuoteTreeItem(type: MarketType, symbol: string, store: MarketStore
   const decorationUri =
     showChangePercent && !monochrome ? quoteDecorationUri(key, quote.changePercent) : undefined;
 
-  return new KanpanTreeItem(key, `${pinPrefix}[${displayName}]`, vscode.TreeItemCollapsibleState.None, {
+  return new KanpanTreeItem(key, `${pinPrefix}${bellPrefix}[${displayName}]`, collapsible, {
     description: descParts.join('  '),
-    tooltip: [formatQuoteTooltip(quote), inStatusBar ? '已在状态栏显示' : '右键 → 添加到状态栏', '可拖拽调整顺序'].join('\n'),
+    tooltip: [
+      formatQuoteTooltip(quote),
+      inStatusBar ? '已在状态栏显示' : '右键 → 添加到状态栏',
+      '点击左侧三角展开，可在下方设置/管理价格提醒',
+      '可拖拽调整顺序',
+    ].join('\n'),
     iconPath,
     resourceUri: decorationUri,
     contextValue,
@@ -200,6 +258,10 @@ export class StockTreeProvider implements vscode.TreeDataProvider<KanpanTreeItem
       return aShares.map((symbol) => buildQuoteTreeItem('ashare', symbol, this.store));
     }
 
+    if (isQuoteMarketKey(element.nodeId)) {
+      return buildAlertChildren(element.nodeId);
+    }
+
     return [];
   }
 }
@@ -245,6 +307,10 @@ export class CryptoTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
         ];
       }
       return symbols.map((symbol) => buildQuoteTreeItem('crypto', symbol, this.store));
+    }
+
+    if (isQuoteMarketKey(element.nodeId)) {
+      return buildAlertChildren(element.nodeId);
     }
 
     return [];

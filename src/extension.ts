@@ -1,9 +1,17 @@
 import * as vscode from 'vscode';
 import { initKanpanThemeColors, selectColorScheme, setCustomColor } from './colorSettings';
 import { MarketService, MarketStore } from './marketService';
+import {
+  BinancePairsSnapshot,
+  initBinancePairsCache,
+  prefetchBinanceTradingPairs,
+} from './providers';
 import { QuoteDecorationProvider } from './quoteDecoration';
 import { createCryptoDragController, createStockDragController } from './sidebar/reorder';
 import { bindExtensionContext, CryptoTreeProvider, SettingsTreeProvider, StockTreeProvider } from './sidebar/treeProviders';
+import { createPriceAlert, deletePriceAlertById, managePriceAlerts, togglePriceAlertById } from './priceAlerts';
+
+const BINANCE_PAIRS_STORAGE_KEY = 'kanpan.binanceTradingPairs';
 
 async function moveItem(
   item: { nodeId?: string } | undefined,
@@ -23,6 +31,14 @@ async function moveItem(
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   bindExtensionContext(context);
   await initKanpanThemeColors();
+
+  initBinancePairsCache(
+    context.globalState.get<BinancePairsSnapshot>(BINANCE_PAIRS_STORAGE_KEY),
+    (snapshot) => {
+      void context.globalState.update(BINANCE_PAIRS_STORAGE_KEY, snapshot);
+    }
+  );
+  prefetchBinanceTradingPairs();
 
   const store = new MarketStore();
   const marketService = new MarketService(context, store);
@@ -117,6 +133,66 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         stockProvider.refresh();
         cryptoProvider.refresh();
       }
+    }),
+    vscode.commands.registerCommand('kanpan.setPriceAlert', async (item?: { nodeId?: string }) => {
+      let key = item?.nodeId;
+      if (key?.startsWith('alert-add:')) {
+        key = key.slice('alert-add:'.length);
+      }
+      if (!key || !key.includes(':') || key.startsWith('alert:')) {
+        return;
+      }
+      const cached = store.get(key);
+      await createPriceAlert(context, key, cached?.quote?.price);
+      stockProvider.refresh();
+      cryptoProvider.refresh();
+    }),
+    vscode.commands.registerCommand('kanpan.managePriceAlerts', async (item?: { nodeId?: string }) => {
+      let key = item?.nodeId;
+      if (key?.startsWith('alert-add:')) {
+        key = key.slice('alert-add:'.length);
+      }
+      if (key?.startsWith('alert:')) {
+        key = undefined;
+      }
+      const marketKey = key?.includes(':') ? key : undefined;
+      await managePriceAlerts(context, marketKey);
+      stockProvider.refresh();
+      cryptoProvider.refresh();
+    }),
+    vscode.commands.registerCommand('kanpan.managePriceAlertItem', async (item?: { nodeId?: string }) => {
+      const nodeId = item?.nodeId;
+      if (!nodeId?.startsWith('alert:')) {
+        return;
+      }
+      const alertId = nodeId.slice('alert:'.length);
+      const action = await vscode.window.showQuickPick(
+        [
+          { label: '启用/停用', action: 'toggle' as const },
+          { label: '删除', action: 'delete' as const },
+        ],
+        { placeHolder: '管理这条价格提醒' }
+      );
+      if (!action) {
+        return;
+      }
+      if (action.action === 'delete') {
+        await deletePriceAlertById(context, alertId);
+        vscode.window.showInformationMessage('已删除提醒');
+      } else {
+        await togglePriceAlertById(context, alertId);
+      }
+      stockProvider.refresh();
+      cryptoProvider.refresh();
+    }),
+    vscode.commands.registerCommand('kanpan.deletePriceAlert', async (item?: { nodeId?: string }) => {
+      const nodeId = item?.nodeId;
+      if (!nodeId?.startsWith('alert:')) {
+        return;
+      }
+      await deletePriceAlertById(context, nodeId.slice('alert:'.length));
+      stockProvider.refresh();
+      cryptoProvider.refresh();
     }),
     vscode.commands.registerCommand('kanpan.openSettings', () => {
       vscode.commands.executeCommand('workbench.action.openSettings', 'kanpan');

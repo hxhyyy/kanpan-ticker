@@ -5,6 +5,7 @@ import {
   fetchCryptoQuote,
   formatChangePercent,
   formatPrice,
+  getCachedBinanceTradingPairs,
   QuoteData,
   renderFormat,
 } from './providers';
@@ -37,6 +38,7 @@ import {
 } from './sidebar/reorder';
 import { sessionLabel } from './session';
 import { fetchVolumeStats } from './volumeStats';
+import { evaluatePriceAlerts } from './priceAlerts';
 
 export type MarketType = 'stock' | 'crypto' | 'ashare';
 
@@ -310,20 +312,25 @@ export class MarketService {
   }
 
   async addCrypto(): Promise<void> {
-    let pairs;
-    try {
-      pairs = await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: '正在加载 Binance 交易对...',
-        },
-        () => fetchBinanceTradingPairs()
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `加载 Binance 交易对失败: ${error instanceof Error ? error.message : String(error)}`
-      );
-      return;
+    let pairs = getCachedBinanceTradingPairs();
+    if (!pairs?.length) {
+      try {
+        pairs = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: '正在加载 Binance 交易对...',
+          },
+          () => fetchBinanceTradingPairs()
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `加载 Binance 交易对失败: ${error instanceof Error ? error.message : String(error)}`
+        );
+        return;
+      }
+    } else {
+      // 有缓存直接打开列表；过期时在后台静默刷新
+      void fetchBinanceTradingPairs();
     }
 
     const symbols = getConfig().get<string[]>('cryptoSymbols', []);
@@ -638,6 +645,7 @@ export class MarketService {
             : await fetchCryptoQuote(symbol);
       const enriched = await this.store.enrichQuoteWithVolumeStats(type, symbol, quote);
       this.store.setQuote(key, enriched);
+      void evaluatePriceAlerts(this.context, key, enriched);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.store.setError(key, message);

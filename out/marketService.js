@@ -50,6 +50,7 @@ const aShareSources_1 = require("./aShareSources");
 const colorSettings_1 = require("./colorSettings");
 const reorder_1 = require("./sidebar/reorder");
 const volumeStats_1 = require("./volumeStats");
+const priceAlerts_1 = require("./priceAlerts");
 function marketKeyOf(type, symbol) {
     if (type === 'ashare') {
         return `${type}:${(0, aShareSources_1.normalizeAShareCode)(symbol)}`;
@@ -266,16 +267,22 @@ class MarketService {
         void this.refresh();
     }
     async addCrypto() {
-        let pairs;
-        try {
-            pairs = await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: '正在加载 Binance 交易对...',
-            }, () => (0, providers_1.fetchBinanceTradingPairs)());
+        let pairs = (0, providers_1.getCachedBinanceTradingPairs)();
+        if (!pairs?.length) {
+            try {
+                pairs = await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: '正在加载 Binance 交易对...',
+                }, () => (0, providers_1.fetchBinanceTradingPairs)());
+            }
+            catch (error) {
+                vscode.window.showErrorMessage(`加载 Binance 交易对失败: ${error instanceof Error ? error.message : String(error)}`);
+                return;
+            }
         }
-        catch (error) {
-            vscode.window.showErrorMessage(`加载 Binance 交易对失败: ${error instanceof Error ? error.message : String(error)}`);
-            return;
+        else {
+            // 有缓存直接打开列表；过期时在后台静默刷新
+            void (0, providers_1.fetchBinanceTradingPairs)();
         }
         const symbols = getConfig().get('cryptoSymbols', []);
         const existing = new Set(symbols.map((s) => s.toUpperCase()));
@@ -519,6 +526,7 @@ class MarketService {
                     : await (0, providers_1.fetchCryptoQuote)(symbol);
             const enriched = await this.store.enrichQuoteWithVolumeStats(type, symbol, quote);
             this.store.setQuote(key, enriched);
+            void (0, priceAlerts_1.evaluatePriceAlerts)(this.context, key, enriched);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);

@@ -33,7 +33,10 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.initBinancePairsCache = initBinancePairsCache;
+exports.getCachedBinanceTradingPairs = getCachedBinanceTradingPairs;
 exports.fetchBinanceTradingPairs = fetchBinanceTradingPairs;
+exports.prefetchBinanceTradingPairs = prefetchBinanceTradingPairs;
 exports.fetchCryptoQuote = fetchCryptoQuote;
 exports.defaultSymbolLabel = defaultSymbolLabel;
 exports.formatPrice = formatPrice;
@@ -42,10 +45,9 @@ exports.formatVolume = formatVolume;
 exports.formatVolumeDetail = formatVolumeDetail;
 exports.renderFormat = renderFormat;
 const https = __importStar(require("https"));
-function httpGet(url) {
+function httpGet(url, timeoutMs = 20000) {
     return new Promise((resolve, reject) => {
-        https
-            .get(url, (res) => {
+        const req = https.get(url, (res) => {
             let data = '';
             res.on('data', (chunk) => (data += chunk));
             res.on('end', () => {
@@ -55,8 +57,11 @@ function httpGet(url) {
                 }
                 resolve(data);
             });
-        })
-            .on('error', reject);
+        });
+        req.setTimeout(timeoutMs, () => {
+            req.destroy(new Error(`Request timeout after ${timeoutMs}ms`));
+        });
+        req.on('error', reject);
     });
 }
 const CRYPTO_DISPLAY_NAMES = {
@@ -71,10 +76,24 @@ function cryptoDisplayName(symbol) {
     const upper = symbol.toUpperCase();
     return CRYPTO_DISPLAY_NAMES[upper] ?? upper.replace(/USDT$|BUSD$|USD$/, '');
 }
-const BINANCE_PAIRS_TTL_MS = 60 * 60 * 1000;
+/** 交易对列表变化不频繁，本地缓存 24 小时 */
+const BINANCE_PAIRS_TTL_MS = 24 * 60 * 60 * 1000;
 let binancePairsCache;
+let persistPairs;
+let refreshInFlight;
+/** 从 globalState 恢复缓存，并注册落盘回调（扩展启动时调用一次） */
+function initBinancePairsCache(saved, onSave) {
+    persistPairs = onSave;
+    if (saved?.pairs?.length && typeof saved.fetchedAt === 'number') {
+        binancePairsCache = saved;
+    }
+}
+/** 同步读取本地缓存（有则立即可用，无需联网） */
+function getCachedBinanceTradingPairs() {
+    return binancePairsCache?.pairs?.length ? binancePairsCache.pairs : undefined;
+}
 function sortBinancePairs(pairs) {
-    return pairs.sort((a, b) => {
+    return [...pairs].sort((a, b) => {
         // 现货优先于合约；USDT 优先；再按符号排序
         const aMarket = a.market === 'spot' ? 0 : 1;
         const bMarket = b.market === 'spot' ? 0 : 1;
@@ -89,37 +108,55 @@ function sortBinancePairs(pairs) {
         return a.symbol.localeCompare(b.symbol);
     });
 }
-async function fetchSpotTradingPairs() {
-    const body = await httpGet('https://api.binance.com/api/v3/exchangeInfo');
+/** 搜索列表只保留主流稳定币计价，减小体积、加快加载 */
+function pairFromTickerSymbol(symbol, market) {
+    if (symbol.endsWith('USDT')) {
+        return {
+            symbol,
+            baseAsset: symbol.slice(0, -4),
+            quoteAsset: 'USDT',
+            market,
+        };
+    }
+    if (symbol.endsWith('USDC')) {
+        return {
+            symbol,
+            baseAsset: symbol.slice(0, -4),
+            quoteAsset: 'USDC',
+            market,
+        };
+    }
+    return undefined;
+}
+async function fetchPairsFromTickerPrice(url, market) {
+    // ticker/price 比 exchangeInfo 小很多，避免一直卡在「加载交易对」
+    const body = await httpGet(url, 12000);
     const json = JSON.parse(body);
-    return json.symbols
-        .filter((s) => s.status === 'TRADING')
-        .map((s) => ({
-        symbol: s.symbol,
-        baseAsset: s.baseAsset,
-        quoteAsset: s.quoteAsset,
-        market: 'spot',
-    }));
+    if (!Array.isArray(json)) {
+        return [];
+    }
+    const pairs = [];
+    for (const item of json) {
+        const pair = pairFromTickerSymbol(item.symbol, market);
+        if (pair) {
+            pairs.push(pair);
+        }
+    }
+    return pairs;
+}
+async function fetchSpotTradingPairs() {
+    return fetchPairsFromTickerPrice('https://api.binance.com/api/v3/ticker/price', 'spot');
 }
 async function fetchFuturesTradingPairs() {
-    const body = await httpGet('https://fapi.binance.com/fapi/v1/exchangeInfo');
-    const json = JSON.parse(body);
-    return json.symbols
-        .filter((s) => s.status === 'TRADING')
-        .map((s) => ({
-        symbol: s.symbol,
-        baseAsset: s.baseAsset,
-        quoteAsset: s.quoteAsset,
-        market: 'futures',
-    }));
+    return fetchPairsFromTickerPrice('https://fapi.binance.com/fapi/v1/ticker/price', 'futures');
 }
-/** 拉取 Binance 现货 + 合约 TRADING 交易对（现货优先；同名只保留现货；缓存 1 小时） */
-async function fetchBinanceTradingPairs() {
-    const now = Date.now();
-    if (binancePairsCache && now - binancePairsCache.fetchedAt < BINANCE_PAIRS_TTL_MS) {
-        return binancePairsCache.pairs;
-    }
-    const [spot, futures] = await Promise.all([fetchSpotTradingPairs(), fetchFuturesTradingPairs()]);
+function savePairsCache(pairs) {
+    const snapshot = { pairs, fetchedAt: Date.now() };
+    binancePairsCache = snapshot;
+    persistPairs?.(snapshot);
+    return pairs;
+}
+function mergeSpotAndFutures(spot, futures) {
     const bySymbol = new Map();
     for (const pair of spot) {
         bySymbol.set(pair.symbol, pair);
@@ -129,9 +166,55 @@ async function fetchBinanceTradingPairs() {
             bySymbol.set(pair.symbol, pair);
         }
     }
-    const pairs = sortBinancePairs([...bySymbol.values()]);
-    binancePairsCache = { pairs, fetchedAt: now };
-    return pairs;
+    return sortBinancePairs([...bySymbol.values()]);
+}
+async function refreshBinanceTradingPairs() {
+    if (refreshInFlight) {
+        return refreshInFlight;
+    }
+    refreshInFlight = (async () => {
+        const results = await Promise.allSettled([fetchSpotTradingPairs(), fetchFuturesTradingPairs()]);
+        const spot = results[0].status === 'fulfilled' ? results[0].value : [];
+        const futures = results[1].status === 'fulfilled' ? results[1].value : [];
+        const pairs = mergeSpotAndFutures(spot, futures);
+        if (pairs.length === 0) {
+            const errors = results
+                .filter((r) => r.status === 'rejected')
+                .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)));
+            throw new Error(errors.join(' | ') || '无法加载 Binance 交易对');
+        }
+        return savePairsCache(pairs);
+    })();
+    try {
+        return await refreshInFlight;
+    }
+    finally {
+        refreshInFlight = undefined;
+    }
+}
+function isPairsCacheFresh() {
+    return !!binancePairsCache && Date.now() - binancePairsCache.fetchedAt < BINANCE_PAIRS_TTL_MS;
+}
+/**
+ * 拉取 Binance 现货 + 合约 TRADING 交易对。
+ * 有本地缓存时立即返回；过期则后台刷新，避免每次添加都卡在加载提示。
+ */
+async function fetchBinanceTradingPairs() {
+    const cached = getCachedBinanceTradingPairs();
+    if (cached) {
+        if (!isPairsCacheFresh()) {
+            void refreshBinanceTradingPairs().catch(() => undefined);
+        }
+        return cached;
+    }
+    return refreshBinanceTradingPairs();
+}
+/** 扩展启动时后台预热，打开添加面板时通常已就绪 */
+function prefetchBinanceTradingPairs() {
+    if (isPairsCacheFresh()) {
+        return;
+    }
+    void refreshBinanceTradingPairs().catch(() => undefined);
 }
 function quoteFromTicker(upper, json, dataSource) {
     return {

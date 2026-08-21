@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.5.6",
+  "version": "0.6.0",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -179,6 +179,25 @@
         "icon": "$(pinned-dirty)"
       },
       {
+        "command": "kanpan.setPriceAlert",
+        "title": "设置价格提醒",
+        "icon": "$(bell)"
+      },
+      {
+        "command": "kanpan.managePriceAlerts",
+        "title": "管理价格提醒",
+        "icon": "$(bell-dot)"
+      },
+      {
+        "command": "kanpan.deletePriceAlert",
+        "title": "删除价格提醒",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kanpan.managePriceAlertItem",
+        "title": "管理单条价格提醒"
+      },
+      {
         "command": "kanpan.openSettings",
         "title": "打开设置",
         "icon": "$(settings-gear)"
@@ -215,68 +234,103 @@
         },
         {
           "command": "kanpan.addToStatusBar",
-          "when": "view == kanpanView.stock && viewItem == usStock",
+          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockAlert)",
           "group": "status@1"
         },
         {
           "command": "kanpan.removeFromStatusBar",
-          "when": "view == kanpanView.stock && viewItem == usStockPinned",
+          "when": "view == kanpanView.stock && (viewItem == usStockPinned || viewItem == usStockPinnedAlert)",
           "group": "status@1"
+        },
+        {
+          "command": "kanpan.setPriceAlert",
+          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned || viewItem == usStockAlert || viewItem == usStockPinnedAlert)",
+          "group": "inline@0"
+        },
+        {
+          "command": "kanpan.managePriceAlerts",
+          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned || viewItem == usStockAlert || viewItem == usStockPinnedAlert)",
+          "group": "alert@2"
         },
         {
           "command": "kanpan.addToStatusBar",
-          "when": "view == kanpanView.stock && viewItem == aStock",
+          "when": "view == kanpanView.stock && (viewItem == aStock || viewItem == aStockAlert)",
           "group": "status@1"
         },
         {
           "command": "kanpan.removeFromStatusBar",
-          "when": "view == kanpanView.stock && viewItem == aStockPinned",
+          "when": "view == kanpanView.stock && (viewItem == aStockPinned || viewItem == aStockPinnedAlert)",
           "group": "status@1"
         },
         {
+          "command": "kanpan.setPriceAlert",
+          "when": "view == kanpanView.stock && (viewItem == aStock || viewItem == aStockPinned || viewItem == aStockAlert || viewItem == aStockPinnedAlert)",
+          "group": "inline@0"
+        },
+        {
+          "command": "kanpan.managePriceAlerts",
+          "when": "view == kanpanView.stock && (viewItem == aStock || viewItem == aStockPinned || viewItem == aStockAlert || viewItem == aStockPinnedAlert)",
+          "group": "alert@2"
+        },
+        {
           "command": "kanpan.moveUp",
-          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned || viewItem == aStock || viewItem == aStockPinned)",
+          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned || viewItem == aStock || viewItem == aStockPinned || viewItem == usStockAlert || viewItem == usStockPinnedAlert || viewItem == aStockAlert || viewItem == aStockPinnedAlert)",
           "group": "inline@1"
         },
         {
           "command": "kanpan.moveDown",
-          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned || viewItem == aStock || viewItem == aStockPinned)",
+          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned || viewItem == aStock || viewItem == aStockPinned || viewItem == usStockAlert || viewItem == usStockPinnedAlert || viewItem == aStockAlert || viewItem == aStockPinnedAlert)",
           "group": "inline@1"
         },
         {
           "command": "kanpan.removeAShare",
-          "when": "view == kanpanView.stock && (viewItem == aStock || viewItem == aStockPinned)",
+          "when": "view == kanpanView.stock && (viewItem == aStock || viewItem == aStockPinned || viewItem == aStockAlert || viewItem == aStockPinnedAlert)",
           "group": "inline@2"
         },
         {
           "command": "kanpan.addToStatusBar",
-          "when": "view == kanpanView.crypto && viewItem == crypto",
+          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoAlert)",
           "group": "status@1"
         },
         {
           "command": "kanpan.removeFromStatusBar",
-          "when": "view == kanpanView.crypto && viewItem == cryptoPinned",
+          "when": "view == kanpanView.crypto && (viewItem == cryptoPinned || viewItem == cryptoPinnedAlert)",
           "group": "status@1"
         },
         {
+          "command": "kanpan.setPriceAlert",
+          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned || viewItem == cryptoAlert || viewItem == cryptoPinnedAlert)",
+          "group": "inline@0"
+        },
+        {
+          "command": "kanpan.managePriceAlerts",
+          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned || viewItem == cryptoAlert || viewItem == cryptoPinnedAlert)",
+          "group": "alert@2"
+        },
+        {
           "command": "kanpan.moveUp",
-          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned)",
+          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned || viewItem == cryptoAlert || viewItem == cryptoPinnedAlert)",
           "group": "inline@1"
         },
         {
           "command": "kanpan.moveDown",
-          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned)",
+          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned || viewItem == cryptoAlert || viewItem == cryptoPinnedAlert)",
           "group": "inline@1"
         },
         {
           "command": "kanpan.removeStock",
-          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned)",
+          "when": "view == kanpanView.stock && (viewItem == usStock || viewItem == usStockPinned || viewItem == usStockAlert || viewItem == usStockPinnedAlert)",
           "group": "inline@2"
         },
         {
           "command": "kanpan.removeCrypto",
-          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned)",
+          "when": "view == kanpanView.crypto && (viewItem == crypto || viewItem == cryptoPinned || viewItem == cryptoAlert || viewItem == cryptoPinnedAlert)",
           "group": "inline@2"
+        },
+        {
+          "command": "kanpan.deletePriceAlert",
+          "when": "viewItem == priceAlert",
+          "group": "inline@1"
         }
       ]
     },
@@ -390,6 +444,12 @@
           "type": "boolean",
           "default": false,
           "description": "仅在窗口聚焦时刷新"
+        },
+        "kanpan.alertCooldownMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "description": "价格提醒「每次触发」的默认冷却分钟数；创建提醒时可单独覆盖。0 表示不冷却"
         },
         "kanpan.enabled": {
           "type": "boolean",
