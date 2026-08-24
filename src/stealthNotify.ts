@@ -6,15 +6,17 @@ import * as vscode from 'vscode';
 export type AlertNotifyMode = 'system' | 'ide' | 'both';
 
 const STEALTH_APP_ID = 'Android Studio';
-const ICON_RELATIVE = path.join('resources', 'android-studio-toast.png');
+const ICON_RISE_RELATIVE = path.join('resources', 'android-studio-toast.png');
+const ICON_FALL_RELATIVE = path.join('resources', 'android-studio-toast-fall.png');
 
 let extensionRoot: string | undefined;
-let cachedIconPath: string | undefined;
+const cachedIconPaths: { rise?: string; fall?: string } = {};
 let cachedAppId: string = STEALTH_APP_ID;
 
 export function initStealthNotify(context: vscode.ExtensionContext): void {
   extensionRoot = context.extensionPath;
-  cachedIconPath = undefined;
+  cachedIconPaths.rise = undefined;
+  cachedIconPaths.fall = undefined;
   cachedAppId = STEALTH_APP_ID;
   // 后台探测本机 Android Studio 的真实 AppId（不阻塞激活）
   if (process.platform === 'win32') {
@@ -52,20 +54,26 @@ function toFileUri(filePath: string): string {
   return encodeURI(raw);
 }
 
-function getIconPath(): string | undefined {
-  if (cachedIconPath && fs.existsSync(cachedIconPath)) {
-    return cachedIconPath;
+function getIconPath(rising = true): string | undefined {
+  const cacheKey = rising ? 'rise' : 'fall';
+  const cached = cachedIconPaths[cacheKey];
+  if (cached && fs.existsSync(cached)) {
+    return cached;
   }
+  const relative = rising ? ICON_RISE_RELATIVE : ICON_FALL_RELATIVE;
   const candidates = [
-    extensionRoot ? path.join(extensionRoot, ICON_RELATIVE) : undefined,
-    path.join(__dirname, '..', ICON_RELATIVE),
+    extensionRoot ? path.join(extensionRoot, relative) : undefined,
+    path.join(__dirname, '..', relative),
   ].filter((p): p is string => Boolean(p));
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
-      cachedIconPath = candidate;
+      cachedIconPaths[cacheKey] = candidate;
       return candidate;
     }
+  }
+  if (!rising) {
+    return getIconPath(true);
   }
   return undefined;
 }
@@ -115,10 +123,10 @@ export function formatStealthAlert(price: number): { title: string; body: string
 }
 
 /** Windows Toast：标题像 IDE，正文像构建号，左侧用 AS 风格图标 */
-function showWindowsToast(title: string, body: string): boolean {
+function showWindowsToast(title: string, body: string, rising: boolean): boolean {
   const t = escapeXml(title);
   const b = escapeXml(body);
-  const iconPath = getIconPath();
+  const iconPath = getIconPath(rising);
   const appIdPs = resolveAppId().replace(/'/g, "''");
   const imageXml = iconPath
     ? `<image placement="appLogoOverride" hint-crop="circle" src="${escapeXml(toFileUri(iconPath))}"/>`
@@ -146,11 +154,11 @@ $notifier.Show($toast)
   }
 }
 
-function showNodeNotifier(title: string, body: string): void {
+function showNodeNotifier(title: string, body: string, rising: boolean): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const notifier = require('node-notifier') as typeof import('node-notifier');
-    const icon = getIconPath();
+    const icon = getIconPath(rising);
     notifier.notify({
       title,
       message: body,
@@ -167,8 +175,8 @@ function showIdeNotification(title: string, body: string): void {
   void vscode.window.showInformationMessage(`${title}: ${body}`);
 }
 
-/** 隐蔽提醒：看起来像 Android Studio 构建通知 */
-export async function showStealthAlert(price: number): Promise<void> {
+/** 隐蔽提醒：看起来像 Android Studio 构建通知；涨用绿底图标，跌用红底图标 */
+export async function showStealthAlert(price: number, rising = true): Promise<void> {
   const { title, body } = formatStealthAlert(price);
   const mode = getNotifyMode();
 
@@ -179,9 +187,9 @@ export async function showStealthAlert(price: number): Promise<void> {
 
   if (process.platform === 'win32') {
     // 只走一条 Windows Toast，避免再弹 node-notifier 默认吐司图
-    showWindowsToast(title, body);
+    showWindowsToast(title, body, rising);
   } else {
-    showNodeNotifier(title, body);
+    showNodeNotifier(title, body, rising);
   }
 
   if (mode === 'both') {

@@ -35,12 +35,16 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
+const fs = __importStar(require("fs"));
 const vscode = __importStar(require("vscode"));
 const colorSettings_1 = require("./colorSettings");
 const marketService_1 = require("./marketService");
 const providers_1 = require("./providers");
 const quoteDecoration_1 = require("./quoteDecoration");
+const readerService_1 = require("./reader/readerService");
+const readerWebview_1 = require("./reader/readerWebview");
 const reorder_1 = require("./sidebar/reorder");
+const readerTreeProvider_1 = require("./sidebar/readerTreeProvider");
 const treeProviders_1 = require("./sidebar/treeProviders");
 const priceAlerts_1 = require("./priceAlerts");
 const stealthNotify_1 = require("./stealthNotify");
@@ -64,9 +68,12 @@ async function activate(context) {
     (0, providers_1.prefetchBinanceTradingPairs)();
     const store = new marketService_1.MarketStore();
     const marketService = new marketService_1.MarketService(context, store);
+    const readerService = new readerService_1.ReaderService(context);
     const quoteDecoration = new quoteDecoration_1.QuoteDecorationProvider();
     const stockProvider = new treeProviders_1.StockTreeProvider(store);
     const cryptoProvider = new treeProviders_1.CryptoTreeProvider(store);
+    const readerProvider = new readerTreeProvider_1.ReaderTreeProvider(readerService);
+    const readerWebview = new readerWebview_1.ReaderWebviewProvider(readerService);
     const settingsProvider = new treeProviders_1.SettingsTreeProvider();
     const refreshStockView = () => stockProvider.refresh();
     const refreshCryptoView = () => cryptoProvider.refresh();
@@ -78,7 +85,12 @@ async function activate(context) {
         treeDataProvider: cryptoProvider,
         dragAndDropController: (0, reorder_1.createCryptoDragController)((source, target) => marketService.reorderWatchItem(source, target), refreshCryptoView),
     });
-    context.subscriptions.push(quoteDecoration, stockView, cryptoView, vscode.window.registerFileDecorationProvider(quoteDecoration), store.onUpdate(() => quoteDecoration.refresh()), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
+    const readerView = vscode.window.createTreeView('kanpanView.reader', {
+        treeDataProvider: readerProvider,
+    });
+    context.subscriptions.push(quoteDecoration, stockView, cryptoView, readerView, readerService, vscode.window.registerWebviewViewProvider(readerWebview_1.ReaderWebviewProvider.viewType, readerWebview, {
+        webviewOptions: { retainContextWhenHidden: true },
+    }), vscode.window.registerFileDecorationProvider(quoteDecoration), store.onUpdate(() => quoteDecoration.refresh()), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
         await marketService.refresh();
         stockProvider.refresh();
         cryptoProvider.refresh();
@@ -181,6 +193,23 @@ async function activate(context) {
         cryptoProvider.refresh();
     }), vscode.commands.registerCommand('kanpan.openSettings', () => {
         vscode.commands.executeCommand('workbench.action.openSettings', 'kanpan');
+    }), vscode.commands.registerCommand('kanpan.readerOpen', async () => {
+        try {
+            await readerService.pickAndOpen();
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`打开 EPUB 失败：${msg}`);
+        }
+    }), vscode.commands.registerCommand('kanpan.readerNext', () => readerService.nextPage(readerService_1.READER_PAGE_SIZE)), vscode.commands.registerCommand('kanpan.readerPrev', () => readerService.prevPage(readerService_1.READER_PAGE_SIZE)), vscode.commands.registerCommand('kanpan.readerClose', () => readerService.closeBook()), vscode.commands.registerCommand('kanpan.readerJumpChapter', async (item) => {
+        const nodeId = item?.nodeId;
+        if (!nodeId?.startsWith('reader-chapter:')) {
+            return;
+        }
+        const index = Number(nodeId.slice('reader-chapter:'.length));
+        if (Number.isFinite(index)) {
+            await readerService.jumpToChapter(index);
+        }
     }), vscode.commands.registerCommand('kanpan.selectStockSource', async () => {
         await marketService.selectStockSource();
         stockProvider.refresh();
@@ -223,6 +252,25 @@ async function activate(context) {
         void marketService.refresh();
     }));
     marketService.start();
+    await restoreReaderBook(readerService);
+}
+async function restoreReaderBook(readerService) {
+    await readerService.restore();
+    if (readerService.currentBook) {
+        return;
+    }
+    const configured = vscode.workspace
+        .getConfiguration('kanpan')
+        .get('readerDefaultEpub', '')
+        .trim();
+    if (configured && fs.existsSync(configured)) {
+        try {
+            await readerService.openBook(configured, { silent: true });
+        }
+        catch {
+            // ignore invalid default path
+        }
+    }
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map

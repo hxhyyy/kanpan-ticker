@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { initKanpanThemeColors, selectColorScheme, selectStatusBarBrightness, setCustomColor } from './colorSettings';
 import { MarketService, MarketStore } from './marketService';
@@ -7,7 +8,10 @@ import {
   prefetchBinanceTradingPairs,
 } from './providers';
 import { QuoteDecorationProvider } from './quoteDecoration';
+import { ReaderService, READER_PAGE_SIZE } from './reader/readerService';
+import { ReaderWebviewProvider } from './reader/readerWebview';
 import { createCryptoDragController, createStockDragController } from './sidebar/reorder';
+import { ReaderTreeProvider } from './sidebar/readerTreeProvider';
 import { bindExtensionContext, CryptoTreeProvider, SettingsTreeProvider, StockTreeProvider } from './sidebar/treeProviders';
 import { createPriceAlert, deletePriceAlertById, managePriceAlerts, togglePriceAlertById } from './priceAlerts';
 import { initStealthNotify } from './stealthNotify';
@@ -44,10 +48,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const store = new MarketStore();
   const marketService = new MarketService(context, store);
+  const readerService = new ReaderService(context);
   const quoteDecoration = new QuoteDecorationProvider();
 
   const stockProvider = new StockTreeProvider(store);
   const cryptoProvider = new CryptoTreeProvider(store);
+  const readerProvider = new ReaderTreeProvider(readerService);
+  const readerWebview = new ReaderWebviewProvider(readerService);
   const settingsProvider = new SettingsTreeProvider();
 
   const refreshStockView = () => stockProvider.refresh();
@@ -69,10 +76,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
   });
 
+  const readerView = vscode.window.createTreeView('kanpanView.reader', {
+    treeDataProvider: readerProvider,
+  });
+
   context.subscriptions.push(
     quoteDecoration,
     stockView,
     cryptoView,
+    readerView,
+    readerService,
+    vscode.window.registerWebviewViewProvider(ReaderWebviewProvider.viewType, readerWebview, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
     vscode.window.registerFileDecorationProvider(quoteDecoration),
     store.onUpdate(() => quoteDecoration.refresh()),
     vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider),
@@ -206,6 +222,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('kanpan.openSettings', () => {
       vscode.commands.executeCommand('workbench.action.openSettings', 'kanpan');
     }),
+    vscode.commands.registerCommand('kanpan.readerOpen', async () => {
+      try {
+        await readerService.pickAndOpen();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`打开 EPUB 失败：${msg}`);
+      }
+    }),
+    vscode.commands.registerCommand('kanpan.readerNext', () =>
+      readerService.nextPage(READER_PAGE_SIZE)
+    ),
+    vscode.commands.registerCommand('kanpan.readerPrev', () =>
+      readerService.prevPage(READER_PAGE_SIZE)
+    ),
+    vscode.commands.registerCommand('kanpan.readerClose', () => readerService.closeBook()),
+    vscode.commands.registerCommand(
+      'kanpan.readerJumpChapter',
+      async (item?: { nodeId?: string }) => {
+        const nodeId = item?.nodeId;
+        if (!nodeId?.startsWith('reader-chapter:')) {
+          return;
+        }
+        const index = Number(nodeId.slice('reader-chapter:'.length));
+        if (Number.isFinite(index)) {
+          await readerService.jumpToChapter(index);
+        }
+      }
+    ),
     vscode.commands.registerCommand('kanpan.selectStockSource', async () => {
       await marketService.selectStockSource();
       stockProvider.refresh();
@@ -256,6 +300,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   marketService.start();
+  await restoreReaderBook(readerService);
+}
+
+async function restoreReaderBook(readerService: ReaderService): Promise<void> {
+  await readerService.restore();
+  if (readerService.currentBook) {
+    return;
+  }
+
+  const configured = vscode.workspace
+    .getConfiguration('kanpan')
+    .get<string>('readerDefaultEpub', '')
+    .trim();
+  if (configured && fs.existsSync(configured)) {
+    try {
+      await readerService.openBook(configured, { silent: true });
+    } catch {
+      // ignore invalid default path
+    }
+  }
 }
 
 export function deactivate(): void {}

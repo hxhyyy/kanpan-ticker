@@ -387,8 +387,8 @@ export async function evaluatePriceAlerts(
   }
 
   for (const _alert of fired) {
-    // 伪装成 Android Studio 构建通知
-    void showStealthAlert(quote.price);
+    // 伪装成 Android Studio 构建通知；涨绿底、跌红底
+    void showStealthAlert(quote.price, quote.changePercent >= 0);
   }
 }
 

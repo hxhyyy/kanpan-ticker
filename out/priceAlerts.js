@@ -349,8 +349,8 @@ async function evaluatePriceAlerts(context, marketKey, quote) {
         await savePriceAlerts(context, next);
     }
     for (const _alert of fired) {
-        // 伪装成 Android Studio 构建通知
-        void (0, stealthNotify_1.showStealthAlert)(quote.price);
+        // 伪装成 Android Studio 构建通知；涨绿底、跌红底
+        void (0, stealthNotify_1.showStealthAlert)(quote.price, quote.changePercent >= 0);
     }
 }
 async function pickCondition() {

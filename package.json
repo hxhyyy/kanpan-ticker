@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -47,6 +47,8 @@
     "onStartupFinished",
     "onView:kanpanView.stock",
     "onView:kanpanView.crypto",
+    "onView:kanpanView.reader",
+    "onView:kanpanView.readerText",
     "onView:kanpanView.settings"
   ],
   "main": "./out/extension.js",
@@ -87,6 +89,15 @@
         {
           "id": "kanpanView.crypto",
           "name": "Crypto"
+        },
+        {
+          "id": "kanpanView.reader",
+          "name": "Reader"
+        },
+        {
+          "id": "kanpanView.readerText",
+          "name": "正文",
+          "type": "webview"
         },
         {
           "id": "kanpanView.settings",
@@ -218,6 +229,55 @@
         "command": "kanpan.openSettings",
         "title": "打开设置",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "kanpan.readerOpen",
+        "title": "看盘插件: 打开 EPUB",
+        "icon": "$(book)"
+      },
+      {
+        "command": "kanpan.readerNext",
+        "title": "看盘插件: 阅读下一句",
+        "icon": "$(chevron-right)"
+      },
+      {
+        "command": "kanpan.readerPrev",
+        "title": "看盘插件: 阅读上一句",
+        "icon": "$(chevron-left)"
+      },
+      {
+        "command": "kanpan.readerJumpChapter",
+        "title": "跳转章节"
+      },
+      {
+        "command": "kanpan.readerClose",
+        "title": "看盘插件: 关闭当前书"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "kanpan.readerNext",
+        "key": "right",
+        "mac": "right",
+        "when": "kanpan.readerActive && !suggestWidgetVisible && !renameInputVisible && !findWidgetVisible && !inQuickOpen"
+      },
+      {
+        "command": "kanpan.readerPrev",
+        "key": "left",
+        "mac": "left",
+        "when": "kanpan.readerActive && !suggestWidgetVisible && !renameInputVisible && !findWidgetVisible && !inQuickOpen"
+      },
+      {
+        "command": "kanpan.readerNext",
+        "key": "alt+]",
+        "mac": "alt+]",
+        "when": "kanpan.readerActive"
+      },
+      {
+        "command": "kanpan.readerPrev",
+        "key": "alt+[",
+        "mac": "alt+[",
+        "when": "kanpan.readerActive"
       }
     ],
     "menus": {
@@ -235,6 +295,21 @@
         {
           "command": "kanpan.selectStockSource",
           "when": "view == kanpanView.stock || view == kanpanView.settings",
+          "group": "navigation"
+        },
+        {
+          "command": "kanpan.readerOpen",
+          "when": "view == kanpanView.reader",
+          "group": "navigation"
+        },
+        {
+          "command": "kanpan.readerPrev",
+          "when": "view == kanpanView.reader",
+          "group": "navigation"
+        },
+        {
+          "command": "kanpan.readerNext",
+          "when": "view == kanpanView.reader",
           "group": "navigation"
         }
       ],
@@ -497,7 +572,11 @@
         },
         "kanpan.alertNotifyMode": {
           "type": "string",
-          "enum": ["system", "ide", "both"],
+          "enum": [
+            "system",
+            "ide",
+            "both"
+          ],
           "enumDescriptions": [
             "Windows 系统通知中心（隐蔽，默认）",
             "仅 Cursor/VS Code 编辑器内角标",
@@ -541,6 +620,11 @@
           ],
           "default": "left",
           "description": "状态栏显示位置"
+        },
+        "kanpan.readerDefaultEpub": {
+          "type": "string",
+          "default": "",
+          "description": "默认 EPUB 路径；首次打开且尚未选书时可自动加载"
         }
       }
     }
@@ -553,9 +637,11 @@
   },
   "dependencies": {
     "iconv-lite": "^0.6.3",
+    "jszip": "^3.10.1",
     "node-notifier": "^10.0.1"
   },
   "devDependencies": {
+    "@types/jszip": "^3.4.0",
     "@types/node": "^20.11.0",
     "@types/node-notifier": "^8.0.5",
     "@types/vscode": "^1.85.0",

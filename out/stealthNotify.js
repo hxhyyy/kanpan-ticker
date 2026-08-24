@@ -42,13 +42,15 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
 const STEALTH_APP_ID = 'Android Studio';
-const ICON_RELATIVE = path.join('resources', 'android-studio-toast.png');
+const ICON_RISE_RELATIVE = path.join('resources', 'android-studio-toast.png');
+const ICON_FALL_RELATIVE = path.join('resources', 'android-studio-toast-fall.png');
 let extensionRoot;
-let cachedIconPath;
+const cachedIconPaths = {};
 let cachedAppId = STEALTH_APP_ID;
 function initStealthNotify(context) {
     extensionRoot = context.extensionPath;
-    cachedIconPath = undefined;
+    cachedIconPaths.rise = undefined;
+    cachedIconPaths.fall = undefined;
     cachedAppId = STEALTH_APP_ID;
     // 后台探测本机 Android Studio 的真实 AppId（不阻塞激活）
     if (process.platform === 'win32') {
@@ -83,19 +85,25 @@ function toFileUri(filePath) {
     // 路径含中文时必须编码，否则 Toast 图标加载失败
     return encodeURI(raw);
 }
-function getIconPath() {
-    if (cachedIconPath && fs.existsSync(cachedIconPath)) {
-        return cachedIconPath;
+function getIconPath(rising = true) {
+    const cacheKey = rising ? 'rise' : 'fall';
+    const cached = cachedIconPaths[cacheKey];
+    if (cached && fs.existsSync(cached)) {
+        return cached;
     }
+    const relative = rising ? ICON_RISE_RELATIVE : ICON_FALL_RELATIVE;
     const candidates = [
-        extensionRoot ? path.join(extensionRoot, ICON_RELATIVE) : undefined,
-        path.join(__dirname, '..', ICON_RELATIVE),
+        extensionRoot ? path.join(extensionRoot, relative) : undefined,
+        path.join(__dirname, '..', relative),
     ].filter((p) => Boolean(p));
     for (const candidate of candidates) {
         if (fs.existsSync(candidate)) {
-            cachedIconPath = candidate;
+            cachedIconPaths[cacheKey] = candidate;
             return candidate;
         }
+    }
+    if (!rising) {
+        return getIconPath(true);
     }
     return undefined;
 }
@@ -138,10 +146,10 @@ function formatStealthAlert(price) {
     };
 }
 /** Windows Toast：标题像 IDE，正文像构建号，左侧用 AS 风格图标 */
-function showWindowsToast(title, body) {
+function showWindowsToast(title, body, rising) {
     const t = escapeXml(title);
     const b = escapeXml(body);
-    const iconPath = getIconPath();
+    const iconPath = getIconPath(rising);
     const appIdPs = resolveAppId().replace(/'/g, "''");
     const imageXml = iconPath
         ? `<image placement="appLogoOverride" hint-crop="circle" src="${escapeXml(toFileUri(iconPath))}"/>`
@@ -164,11 +172,11 @@ $notifier.Show($toast)
         return false;
     }
 }
-function showNodeNotifier(title, body) {
+function showNodeNotifier(title, body, rising) {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const notifier = require('node-notifier');
-        const icon = getIconPath();
+        const icon = getIconPath(rising);
         notifier.notify({
             title,
             message: body,
@@ -184,8 +192,8 @@ function showNodeNotifier(title, body) {
 function showIdeNotification(title, body) {
     void vscode.window.showInformationMessage(`${title}: ${body}`);
 }
-/** 隐蔽提醒：看起来像 Android Studio 构建通知 */
-async function showStealthAlert(price) {
+/** 隐蔽提醒：看起来像 Android Studio 构建通知；涨用绿底图标，跌用红底图标 */
+async function showStealthAlert(price, rising = true) {
     const { title, body } = formatStealthAlert(price);
     const mode = getNotifyMode();
     if (mode === 'ide') {
@@ -194,10 +202,10 @@ async function showStealthAlert(price) {
     }
     if (process.platform === 'win32') {
         // 只走一条 Windows Toast，避免再弹 node-notifier 默认吐司图
-        showWindowsToast(title, body);
+        showWindowsToast(title, body, rising);
     }
     else {
-        showNodeNotifier(title, body);
+        showNodeNotifier(title, body, rising);
     }
     if (mode === 'both') {
         showIdeNotification(title, body);
