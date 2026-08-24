@@ -252,6 +252,10 @@
       {
         "command": "kanpan.readerClose",
         "title": "看盘插件: 关闭当前书"
+      },
+      {
+        "command": "kanpan.setReaderStealthSeconds",
+        "title": "看盘插件: 正文隐藏倒计时"
       }
     ],
     "keybindings": [
@@ -625,6 +629,13 @@
           "type": "string",
           "default": "",
           "description": "默认 EPUB 路径；首次打开且尚未选书时可自动加载"
+        },
+        "kanpan.readerStealthSeconds": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "maximum": 600,
+          "description": "正文无操作多少秒后自动隐藏（0 表示关闭；隐藏后连续点击 3 次恢复）"
         }
       }
     }

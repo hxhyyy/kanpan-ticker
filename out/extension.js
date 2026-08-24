@@ -201,7 +201,10 @@ async function activate(context) {
             const msg = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`打开 EPUB 失败：${msg}`);
         }
-    }), vscode.commands.registerCommand('kanpan.readerNext', () => readerService.nextPage(readerService_1.READER_PAGE_SIZE)), vscode.commands.registerCommand('kanpan.readerPrev', () => readerService.prevPage(readerService_1.READER_PAGE_SIZE)), vscode.commands.registerCommand('kanpan.readerClose', () => readerService.closeBook()), vscode.commands.registerCommand('kanpan.readerJumpChapter', async (item) => {
+    }), vscode.commands.registerCommand('kanpan.readerNext', () => readerService.nextPage(readerService_1.READER_PAGE_SIZE)), vscode.commands.registerCommand('kanpan.readerPrev', () => readerService.prevPage(readerService_1.READER_PAGE_SIZE)), vscode.commands.registerCommand('kanpan.readerClose', () => readerService.closeBook()), vscode.commands.registerCommand('kanpan.setReaderStealthSeconds', async () => {
+        await (0, readerWebview_1.selectReaderStealthSeconds)();
+        readerProvider.refresh();
+    }), vscode.commands.registerCommand('kanpan.readerJumpChapter', async (item) => {
         const nodeId = item?.nodeId;
         if (!nodeId?.startsWith('reader-chapter:')) {
             return;
@@ -246,6 +249,10 @@ async function activate(context) {
             stockProvider.refresh();
             cryptoProvider.refresh();
             settingsProvider.refresh();
+            readerProvider.refresh();
+            if (event.affectsConfiguration('kanpan.readerStealthSeconds')) {
+                readerWebview.refresh();
+            }
             quoteDecoration.refresh();
         }
     }), vscode.window.onDidChangeWindowState(() => {

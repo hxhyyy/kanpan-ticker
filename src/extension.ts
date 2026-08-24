@@ -9,7 +9,7 @@ import {
 } from './providers';
 import { QuoteDecorationProvider } from './quoteDecoration';
 import { ReaderService, READER_PAGE_SIZE } from './reader/readerService';
-import { ReaderWebviewProvider } from './reader/readerWebview';
+import { ReaderWebviewProvider, selectReaderStealthSeconds } from './reader/readerWebview';
 import { createCryptoDragController, createStockDragController } from './sidebar/reorder';
 import { ReaderTreeProvider } from './sidebar/readerTreeProvider';
 import { bindExtensionContext, CryptoTreeProvider, SettingsTreeProvider, StockTreeProvider } from './sidebar/treeProviders';
@@ -237,6 +237,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       readerService.prevPage(READER_PAGE_SIZE)
     ),
     vscode.commands.registerCommand('kanpan.readerClose', () => readerService.closeBook()),
+    vscode.commands.registerCommand('kanpan.setReaderStealthSeconds', async () => {
+      await selectReaderStealthSeconds();
+      readerProvider.refresh();
+    }),
     vscode.commands.registerCommand(
       'kanpan.readerJumpChapter',
       async (item?: { nodeId?: string }) => {
@@ -291,6 +295,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         stockProvider.refresh();
         cryptoProvider.refresh();
         settingsProvider.refresh();
+        readerProvider.refresh();
+        if (event.affectsConfiguration('kanpan.readerStealthSeconds')) {
+          readerWebview.refresh();
+        }
         quoteDecoration.refresh();
       }
     }),

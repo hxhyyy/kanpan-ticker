@@ -3,6 +3,14 @@ import * as vscode from 'vscode';
 import { ReaderService } from '../reader/readerService';
 import { KanpanTreeItem } from './treeProviders';
 
+function readerStealthLabel(): string {
+  const raw = vscode.workspace.getConfiguration('kanpan').get<number>('readerStealthSeconds', 10);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return '已关闭';
+  }
+  return `${Math.round(raw)} 秒`;
+}
+
 export class ReaderTreeProvider implements vscode.TreeDataProvider<KanpanTreeItem> {
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<KanpanTreeItem | undefined>();
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
@@ -28,6 +36,17 @@ export class ReaderTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
           iconId: 'folder-opened',
           command: { command: 'kanpan.readerOpen', title: '打开 EPUB' },
         }),
+        new KanpanTreeItem(
+          'reader-stealth-seconds',
+          '正文隐藏倒计时',
+          vscode.TreeItemCollapsibleState.None,
+          {
+            iconId: 'eye-closed',
+            description: readerStealthLabel(),
+            tooltip: '无操作多少秒后自动隐藏正文\n0 表示关闭',
+            command: { command: 'kanpan.setReaderStealthSeconds', title: '设置隐藏倒计时' },
+          }
+        ),
       ];
 
       if (!book) {

@@ -37,6 +37,13 @@ exports.ReaderTreeProvider = void 0;
 const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
 const treeProviders_1 = require("./treeProviders");
+function readerStealthLabel() {
+    const raw = vscode.workspace.getConfiguration('kanpan').get('readerStealthSeconds', 10);
+    if (!Number.isFinite(raw) || raw <= 0) {
+        return '已关闭';
+    }
+    return `${Math.round(raw)} 秒`;
+}
 class ReaderTreeProvider {
     constructor(reader) {
         this.reader = reader;
@@ -57,6 +64,12 @@ class ReaderTreeProvider {
                 new treeProviders_1.KanpanTreeItem('reader-open', '打开 EPUB…', vscode.TreeItemCollapsibleState.None, {
                     iconId: 'folder-opened',
                     command: { command: 'kanpan.readerOpen', title: '打开 EPUB' },
+                }),
+                new treeProviders_1.KanpanTreeItem('reader-stealth-seconds', '正文隐藏倒计时', vscode.TreeItemCollapsibleState.None, {
+                    iconId: 'eye-closed',
+                    description: readerStealthLabel(),
+                    tooltip: '无操作多少秒后自动隐藏正文\n0 表示关闭',
+                    command: { command: 'kanpan.setReaderStealthSeconds', title: '设置隐藏倒计时' },
                 }),
             ];
             if (!book) {

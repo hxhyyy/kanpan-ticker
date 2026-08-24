@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReaderWebviewProvider = void 0;
+exports.selectReaderStealthSeconds = selectReaderStealthSeconds;
 const vscode = __importStar(require("vscode"));
 const readerService_1 = require("./readerService");
 function escapeHtml(text) {
@@ -57,6 +58,33 @@ function joinProse(parts) {
         out += needsSpace ? ` ${next}` : next;
     }
     return out;
+}
+function getReaderStealthSeconds() {
+    const raw = vscode.workspace.getConfiguration('kanpan').get('readerStealthSeconds', 10);
+    if (!Number.isFinite(raw) || raw <= 0) {
+        return 0;
+    }
+    return Math.min(600, Math.max(1, Math.round(raw)));
+}
+async function selectReaderStealthSeconds() {
+    const config = vscode.workspace.getConfiguration('kanpan');
+    const current = config.get('readerStealthSeconds', 10);
+    const value = await vscode.window.showInputBox({
+        title: '正文无操作自动隐藏',
+        prompt: '多少秒无点击后隐藏正文（0 表示关闭）',
+        value: String(current),
+        validateInput: (input) => {
+            const n = Number(input);
+            if (!Number.isFinite(n) || n < 0 || n > 600) {
+                return '请输入 0–600 之间的数字';
+            }
+            return undefined;
+        },
+    });
+    if (value === undefined) {
+        return;
+    }
+    await config.update('readerStealthSeconds', Number(value), vscode.ConfigurationTarget.Global);
 }
 class ReaderWebviewProvider {
     constructor(reader) {
@@ -104,20 +132,26 @@ class ReaderWebviewProvider {
             ? `<div class="prose">${escapeHtml(prose)}</div>`
             : `<div class="prose muted">（本章暂无正文）</div>`;
         return this.shell(`
-      <div class="meta">
-        <div class="chapter">${escapeHtml(this.reader.chapterTitle)}</div>
-        <div class="progress">${escapeHtml(this.reader.progressLabel)}</div>
+      <div class="wrap stealth-zone">
+        <div class="content-panel">
+          <div class="meta">
+            <div class="chapter">${escapeHtml(this.reader.chapterTitle)}</div>
+            <div class="progress">${escapeHtml(this.reader.progressLabel)}</div>
+          </div>
+          <div class="body" title="点击下翻 · 右键上翻 · 无操作自动隐藏" data-action="nextPage">
+            ${bodyHtml}
+          </div>
+          <div class="bar">
+            <button data-action="prevPage" title="上翻 ${readerService_1.READER_PAGE_SIZE} 句">← ${readerService_1.READER_PAGE_SIZE}</button>
+            <button data-action="nextPage" title="下翻 ${readerService_1.READER_PAGE_SIZE} 句">${readerService_1.READER_PAGE_SIZE} →</button>
+          </div>
+        </div>
+        <div class="stealth-overlay" hidden aria-hidden="true"></div>
       </div>
-      <div class="body" title="点击下翻 ${readerService_1.READER_PAGE_SIZE} 句 · 右键上翻 · ← → 同翻页" data-action="nextPage">
-        ${bodyHtml}
-      </div>
-      <div class="bar">
-        <button data-action="prevPage" title="上翻 ${readerService_1.READER_PAGE_SIZE} 句">← ${readerService_1.READER_PAGE_SIZE}</button>
-        <button data-action="nextPage" title="下翻 ${readerService_1.READER_PAGE_SIZE} 句">${readerService_1.READER_PAGE_SIZE} →</button>
-      </div>
-    `);
+    `, getReaderStealthSeconds());
     }
-    shell(body) {
+    shell(body, stealthSeconds = getReaderStealthSeconds()) {
+        const idleMs = stealthSeconds > 0 ? stealthSeconds * 1000 : 0;
         return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -137,12 +171,33 @@ class ReaderWebviewProvider {
       background: var(--vscode-sideBar-background);
     }
     .wrap {
+      position: relative;
       display: flex;
       flex-direction: column;
       height: 100%;
       box-sizing: border-box;
       padding: 8px 10px 8px;
       gap: 6px;
+    }
+    .content-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+      min-height: 0;
+    }
+    .wrap.stealth-hidden .content-panel {
+      visibility: hidden;
+    }
+    .stealth-overlay {
+      position: absolute;
+      inset: 8px 10px;
+      cursor: default;
+      border-radius: 4px;
+      background: var(--vscode-sideBar-background);
+    }
+    .stealth-overlay[hidden] {
+      display: none !important;
     }
     .meta {
       display: flex;
@@ -226,17 +281,89 @@ class ReaderWebviewProvider {
   </div>
   <script>
     const vscode = acquireVsCodeApi();
+    const IDLE_MS = ${idleMs};
+    const STEALTH_ENABLED = IDLE_MS > 0;
+    const UNLOCK_CLICKS = 3;
+    const UNLOCK_WINDOW_MS = 1200;
+
+    const saved = vscode.getState() || {};
+    let hidden = STEALTH_ENABLED && !!saved.hidden;
+    let unlockClicks = 0;
+    let lastUnlockAt = 0;
+    let idleTimer = null;
+
+    const wrap = document.querySelector('.stealth-zone');
+    const overlay = document.querySelector('.stealth-overlay');
+
+    function applyStealth() {
+      if (!wrap || !overlay) return;
+      wrap.classList.toggle('stealth-hidden', hidden);
+      overlay.hidden = !hidden;
+      if (hidden) {
+        unlockClicks = 0;
+      }
+      vscode.setState({ hidden });
+    }
+
+    function resetIdleTimer() {
+      if (!STEALTH_ENABLED || hidden) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        hidden = true;
+        applyStealth();
+      }, IDLE_MS);
+    }
+
+    function tryUnlock() {
+      if (!STEALTH_ENABLED) return true;
+      const now = Date.now();
+      if (now - lastUnlockAt > UNLOCK_WINDOW_MS) {
+        unlockClicks = 0;
+      }
+      lastUnlockAt = now;
+      unlockClicks += 1;
+      if (unlockClicks >= UNLOCK_CLICKS) {
+        hidden = false;
+        unlockClicks = 0;
+        applyStealth();
+        resetIdleTimer();
+        return true;
+      }
+      return false;
+    }
+
+    applyStealth();
+    if (!hidden) resetIdleTimer();
+
     document.addEventListener('click', (e) => {
+      const zone = e.target.closest('.stealth-zone');
+      if (!zone) return;
+
+      if (hidden) {
+        e.preventDefault();
+        e.stopPropagation();
+        tryUnlock();
+        return;
+      }
+
+      if (STEALTH_ENABLED) resetIdleTimer();
       const el = e.target.closest('[data-action]');
       if (!el) return;
       const type = el.getAttribute('data-action');
       if (type) vscode.postMessage({ type });
     });
+
     document.addEventListener('contextmenu', (e) => {
-      const body = e.target.closest('.body');
-      if (!body) return;
+      const zone = e.target.closest('.stealth-zone');
+      if (!zone) return;
       e.preventDefault();
-      vscode.postMessage({ type: 'prevPage' });
+      if (hidden) {
+        tryUnlock();
+        return;
+      }
+      if (STEALTH_ENABLED) resetIdleTimer();
+      const body = e.target.closest('.body');
+      if (body) vscode.postMessage({ type: 'prevPage' });
     });
   </script>
 </body>
