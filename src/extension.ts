@@ -8,7 +8,7 @@ import {
   prefetchBinanceTradingPairs,
 } from './providers';
 import { QuoteDecorationProvider } from './quoteDecoration';
-import { ReaderService, READER_PAGE_SIZE } from './reader/readerService';
+import { ReaderService } from './reader/readerService';
 import { ReaderWebviewProvider, selectReaderStealthSeconds } from './reader/readerWebview';
 import { createCryptoDragController, createStockDragController } from './sidebar/reorder';
 import { ReaderTreeProvider } from './sidebar/readerTreeProvider';
@@ -54,7 +54,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const stockProvider = new StockTreeProvider(store);
   const cryptoProvider = new CryptoTreeProvider(store);
   const readerProvider = new ReaderTreeProvider(readerService);
-  const readerWebview = new ReaderWebviewProvider(readerService);
+  const readerWebview = new ReaderWebviewProvider(readerService, context.extensionUri);
   const settingsProvider = new SettingsTreeProvider();
 
   const refreshStockView = () => stockProvider.refresh();
@@ -86,9 +86,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     cryptoView,
     readerView,
     readerService,
-    vscode.window.registerWebviewViewProvider(ReaderWebviewProvider.viewType, readerWebview, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
+    vscode.window.registerWebviewViewProvider(ReaderWebviewProvider.viewType, readerWebview),
     vscode.window.registerFileDecorationProvider(quoteDecoration),
     store.onUpdate(() => quoteDecoration.refresh()),
     vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider),
@@ -230,12 +228,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showErrorMessage(`打开 EPUB 失败：${msg}`);
       }
     }),
-    vscode.commands.registerCommand('kanpan.readerNext', () =>
-      readerService.nextPage(READER_PAGE_SIZE)
-    ),
-    vscode.commands.registerCommand('kanpan.readerPrev', () =>
-      readerService.prevPage(READER_PAGE_SIZE)
-    ),
+    vscode.commands.registerCommand('kanpan.readerNext', () => readerWebview.handleNext()),
+    vscode.commands.registerCommand('kanpan.readerPrev', () => readerWebview.handlePrev()),
+    vscode.commands.registerCommand('kanpan.readerContentTap', () => readerWebview.handleNext()),
     vscode.commands.registerCommand('kanpan.readerClose', () => readerService.closeBook()),
     vscode.commands.registerCommand('kanpan.setReaderStealthSeconds', async () => {
       await selectReaderStealthSeconds();

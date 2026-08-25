@@ -34,6 +34,7 @@ export class ReaderTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
       const items: KanpanTreeItem[] = [
         new KanpanTreeItem('reader-open', '打开 EPUB…', vscode.TreeItemCollapsibleState.None, {
           iconId: 'folder-opened',
+          tooltip: '',
           command: { command: 'kanpan.readerOpen', title: '打开 EPUB' },
         }),
         new KanpanTreeItem(
@@ -43,7 +44,7 @@ export class ReaderTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
           {
             iconId: 'eye-closed',
             description: readerStealthLabel(),
-            tooltip: '无操作多少秒后自动隐藏正文\n0 表示关闭',
+            tooltip: '',
             command: { command: 'kanpan.setReaderStealthSeconds', title: '设置隐藏倒计时' },
           }
         ),
@@ -55,7 +56,7 @@ export class ReaderTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
             'reader-hint',
             '打开后可在下方「正文」阅读',
             vscode.TreeItemCollapsibleState.None,
-            { iconId: 'info' }
+            { iconId: 'info', tooltip: '' }
           )
         );
         return items;
@@ -70,7 +71,7 @@ export class ReaderTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
           {
             iconId: 'book',
             description: author.trim() || path.basename(book.filePath),
-            tooltip: `${book.filePath}\n${book.chapters.length} 章 · ${this.reader.progressLabel}`,
+            tooltip: '',
             contextValue: 'readerBook',
           }
         ),
@@ -81,19 +82,22 @@ export class ReaderTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
           {
             iconId: 'location',
             description: this.reader.progressLabel,
-            tooltip: this.reader.currentSegment || '暂无正文',
+            tooltip: '',
           }
         ),
         new KanpanTreeItem('reader-prev', '上一句', vscode.TreeItemCollapsibleState.None, {
           iconId: 'chevron-left',
+          tooltip: '',
           command: { command: 'kanpan.readerPrev', title: '上一句' },
         }),
         new KanpanTreeItem('reader-next', '下一句', vscode.TreeItemCollapsibleState.None, {
           iconId: 'chevron-right',
+          tooltip: '',
           command: { command: 'kanpan.readerNext', title: '下一句' },
         }),
         new KanpanTreeItem('reader-close', '关闭当前书', vscode.TreeItemCollapsibleState.None, {
           iconId: 'close',
+          tooltip: '',
           command: { command: 'kanpan.readerClose', title: '关闭' },
         })
       );
@@ -114,7 +118,7 @@ export class ReaderTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
             description: isCurrent
               ? `▶ ${(progress?.segmentIndex ?? 0) + 1}/${segCount}`
               : `${segCount} 句`,
-            tooltip: ch.title,
+            tooltip: '',
             contextValue: 'readerChapter',
             command: {
               command: 'kanpan.readerJumpChapter',

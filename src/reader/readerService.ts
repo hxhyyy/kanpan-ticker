@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { EpubBook, parseEpub } from './epub';
 
 export const READER_PAGE_SIZE = 5;
+/** Approx chars that fit in the sidebar body without being cut off. */
+export const READER_PAGE_CHARS = 140;
 
 const PROGRESS_KEY = 'kanpan.reader.progress';
 const BOOK_PATH_KEY = 'kanpan.reader.bookPath';
@@ -16,6 +18,8 @@ export class ReaderService {
   private book: EpubBook | undefined;
   private chapterIndex = 0;
   private segmentIndex = 0;
+  /** How many sentences the last rendered page actually contained. */
+  private lastWindowCount = READER_PAGE_SIZE;
   private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.onDidChangeEmitter.event;
 
@@ -44,23 +48,45 @@ export class ReaderService {
     return this.book?.chapters[this.chapterIndex]?.segments[this.segmentIndex] ?? '';
   }
 
-  /** Current sentence plus following ones (crosses chapter boundaries). */
-  getReadingWindow(count = READER_PAGE_SIZE): string[] {
-    if (!this.book || count <= 0) {
+  /** Sentences shown on the current page (used for continuous paging). */
+  get currentPageSize(): number {
+    return Math.max(1, this.lastWindowCount);
+  }
+
+  /**
+   * Pack complete sentences into one page.
+   * Never mid-cut a sentence; stop before exceeding char budget (except the first).
+   */
+  getReadingWindow(
+    maxChars = READER_PAGE_CHARS,
+    maxSentences = READER_PAGE_SIZE
+  ): string[] {
+    if (!this.book || maxSentences <= 0) {
+      this.lastWindowCount = 0;
       return [];
     }
     const result: string[] = [];
     let ci = this.chapterIndex;
     let si = this.segmentIndex;
-    while (result.length < count && ci < this.book.chapters.length) {
+    let chars = 0;
+
+    while (result.length < maxSentences && ci < this.book.chapters.length) {
       const ch = this.book.chapters[ci];
-      while (si < ch.segments.length && result.length < count) {
-        result.push(ch.segments[si]);
+      while (si < ch.segments.length && result.length < maxSentences) {
+        const next = ch.segments[si];
+        if (result.length > 0 && chars + next.length > maxChars) {
+          this.lastWindowCount = result.length;
+          return result;
+        }
+        result.push(next);
+        chars += next.length;
         si += 1;
       }
       ci += 1;
       si = 0;
     }
+
+    this.lastWindowCount = result.length;
     return result;
   }
 
@@ -166,12 +192,14 @@ export class ReaderService {
     await this.advance(-1);
   }
 
-  async nextPage(count = READER_PAGE_SIZE): Promise<void> {
-    await this.advance(Math.max(1, count));
+  async nextPage(count?: number): Promise<void> {
+    const n = count ?? this.currentPageSize;
+    await this.advance(Math.max(1, n));
   }
 
-  async prevPage(count = READER_PAGE_SIZE): Promise<void> {
-    await this.advance(-Math.max(1, count));
+  async prevPage(count?: number): Promise<void> {
+    const n = count ?? this.currentPageSize;
+    await this.advance(-Math.max(1, n));
   }
 
   async closeBook(): Promise<void> {

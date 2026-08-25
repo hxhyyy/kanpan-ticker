@@ -73,7 +73,7 @@ async function activate(context) {
     const stockProvider = new treeProviders_1.StockTreeProvider(store);
     const cryptoProvider = new treeProviders_1.CryptoTreeProvider(store);
     const readerProvider = new readerTreeProvider_1.ReaderTreeProvider(readerService);
-    const readerWebview = new readerWebview_1.ReaderWebviewProvider(readerService);
+    const readerWebview = new readerWebview_1.ReaderWebviewProvider(readerService, context.extensionUri);
     const settingsProvider = new treeProviders_1.SettingsTreeProvider();
     const refreshStockView = () => stockProvider.refresh();
     const refreshCryptoView = () => cryptoProvider.refresh();
@@ -88,9 +88,7 @@ async function activate(context) {
     const readerView = vscode.window.createTreeView('kanpanView.reader', {
         treeDataProvider: readerProvider,
     });
-    context.subscriptions.push(quoteDecoration, stockView, cryptoView, readerView, readerService, vscode.window.registerWebviewViewProvider(readerWebview_1.ReaderWebviewProvider.viewType, readerWebview, {
-        webviewOptions: { retainContextWhenHidden: true },
-    }), vscode.window.registerFileDecorationProvider(quoteDecoration), store.onUpdate(() => quoteDecoration.refresh()), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
+    context.subscriptions.push(quoteDecoration, stockView, cryptoView, readerView, readerService, vscode.window.registerWebviewViewProvider(readerWebview_1.ReaderWebviewProvider.viewType, readerWebview), vscode.window.registerFileDecorationProvider(quoteDecoration), store.onUpdate(() => quoteDecoration.refresh()), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
         await marketService.refresh();
         stockProvider.refresh();
         cryptoProvider.refresh();
@@ -201,7 +199,7 @@ async function activate(context) {
             const msg = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`打开 EPUB 失败：${msg}`);
         }
-    }), vscode.commands.registerCommand('kanpan.readerNext', () => readerService.nextPage(readerService_1.READER_PAGE_SIZE)), vscode.commands.registerCommand('kanpan.readerPrev', () => readerService.prevPage(readerService_1.READER_PAGE_SIZE)), vscode.commands.registerCommand('kanpan.readerClose', () => readerService.closeBook()), vscode.commands.registerCommand('kanpan.setReaderStealthSeconds', async () => {
+    }), vscode.commands.registerCommand('kanpan.readerNext', () => readerWebview.handleNext()), vscode.commands.registerCommand('kanpan.readerPrev', () => readerWebview.handlePrev()), vscode.commands.registerCommand('kanpan.readerContentTap', () => readerWebview.handleNext()), vscode.commands.registerCommand('kanpan.readerClose', () => readerService.closeBook()), vscode.commands.registerCommand('kanpan.setReaderStealthSeconds', async () => {
         await (0, readerWebview_1.selectReaderStealthSeconds)();
         readerProvider.refresh();
     }), vscode.commands.registerCommand('kanpan.readerJumpChapter', async (item) => {
