@@ -3,8 +3,8 @@ import { fetchBtcCandles, fetchMstrCandles, type ChartInterval } from './chartDa
 
 export type ScalpWindow = '1h' | '2h' | '4h';
 
-const GRID_STEP = 0.5;
-const ENTRY_TOLERANCE = 0.15;
+/** 单次操作至少值得赚的价差（美元） */
+const MIN_PROFIT = 0.4;
 
 export interface MstrScalpReport {
   window: ScalpWindow;
@@ -12,6 +12,8 @@ export interface MstrScalpReport {
   mstrSource: string;
   btcSource: string;
   mstrPrice: number;
+  /** 本次窗口建议的单趟目标价差 */
+  targetMove: number;
   range: {
     support: number;
     resistance: number;
@@ -23,12 +25,14 @@ export interface MstrScalpReport {
     suitable: boolean;
     suitableReason: string;
   };
-  grids: number[];
+  /** 按 targetMove 切分的参考价位 */
+  levels: number[];
   action: {
     side: 'long' | 'short' | 'neutral';
     entryZone: [number, number];
     takeProfit: number;
     stopLoss: number;
+    expectedMove: number;
     hint: string;
   };
   btc: {
@@ -78,33 +82,58 @@ export function computeAtr(candles: Candle[], period = 14): number {
   return slice.reduce((a, b) => a + b, 0) / slice.length;
 }
 
-function roundHalf(price: number): number {
-  return Math.round(price * 2) / 2;
+function roundPrice(price: number): number {
+  return Math.round(price * 100) / 100;
 }
 
-function buildGrids(support: number, resistance: number, step = GRID_STEP): number[] {
-  const start = Math.floor(support / step) * step;
-  const grids: number[] = [];
-  for (let p = start; p <= resistance + step * 0.01; p += step) {
-    grids.push(roundHalf(p));
+function medianBarRange(candles: Candle[]): number {
+  const ranges = candles.map((c) => c.high - c.low).filter((r) => Number.isFinite(r) && r > 0);
+  if (ranges.length === 0) {
+    return 0;
   }
-  return grids;
+  ranges.sort((a, b) => a - b);
+  return ranges[Math.floor(ranges.length / 2)];
 }
 
-function inRangeStats(candles: Candle[], lower: number, upper: number): { inRangePct: number; breakouts: number } {
+/**
+ * 根据近几小时波动，估算「这一趟值得做」的目标价差。
+ * 不低于 MIN_PROFIT，也不超过区间宽度的 45%。
+ */
+export function computeTargetMove(candles: Candle[], width: number, atr: number): number {
+  const med = medianBarRange(candles);
+  let step = Math.max(MIN_PROFIT, med * 1.4, atr * 0.55);
+  if (width > 0) {
+    step = Math.min(step, width * 0.45);
+  }
+  step = Math.min(step, 2.5);
+  return roundPrice(Math.max(step, MIN_PROFIT));
+}
+
+function buildLevels(support: number, resistance: number, step: number): number[] {
+  if (step <= 0 || resistance <= support) {
+    return [roundPrice(support), roundPrice(resistance)];
+  }
+  const start = Math.floor(support / step) * step;
+  const levels: number[] = [];
+  for (let p = start; p <= resistance + step * 0.01; p += step) {
+    levels.push(roundPrice(p));
+  }
+  if (levels.length < 2) {
+    return [roundPrice(support), roundPrice(resistance)];
+  }
+  return levels;
+}
+
+function inRangeStats(candles: Candle[], lower: number, upper: number): { inRangePct: number } {
   const closes = candles.map((c) => c.close).filter(Number.isFinite);
   let inRange = 0;
-  let breakouts = 0;
   for (const close of closes) {
     if (close >= lower && close <= upper) {
       inRange++;
-    } else {
-      breakouts++;
     }
   }
   return {
     inRangePct: closes.length > 0 ? (inRange / closes.length) * 100 : 0,
-    breakouts,
   };
 }
 
@@ -155,7 +184,7 @@ function mapBtcLevelToMstr(
   beta: number
 ): number {
   const btcMovePct = (btcLevel - btcAnchor) / btcAnchor;
-  return roundHalf(mstrAnchor * (1 + btcMovePct * beta));
+  return roundPrice(mstrAnchor * (1 + btcMovePct * beta));
 }
 
 function deriveAction(
@@ -163,65 +192,83 @@ function deriveAction(
   support: number,
   resistance: number,
   positionPct: number,
-  grids: number[]
+  targetMove: number,
+  levels: number[]
 ): MstrScalpReport['action'] {
-  const below = grids.filter((g) => g <= price);
-  const above = grids.filter((g) => g >= price);
-  const nearestBelow = below.length > 0 ? below[below.length - 1] : roundHalf(support);
-  const nearestAbove = above.length > 0 ? above[0] : roundHalf(resistance);
-  const distBelow = price - nearestBelow;
-  const distAbove = nearestAbove - price;
+  const entryTol = Math.max(0.1, targetMove * 0.22);
+  const stopPad = Math.max(MIN_PROFIT * 0.75, targetMove * 0.75);
 
-  if (distBelow <= ENTRY_TOLERANCE && positionPct <= 45) {
-    const tp = roundHalf(nearestBelow + GRID_STEP);
+  const below = levels.filter((g) => g <= price);
+  const above = levels.filter((g) => g >= price);
+  const anchorLow = below.length > 0 ? below[below.length - 1] : roundPrice(support);
+  const anchorHigh = above.length > 0 ? above[0] : roundPrice(resistance);
+  const distLow = price - anchorLow;
+  const distHigh = anchorHigh - price;
+
+  const longTp = roundPrice(Math.min(price + targetMove, resistance));
+  const shortTp = roundPrice(Math.max(price - targetMove, support));
+  const longMove = longTp - price;
+  const shortMove = price - shortTp;
+
+  if (distLow <= entryTol && positionPct <= 45 && longMove >= MIN_PROFIT) {
     return {
       side: 'long',
-      entryZone: [roundHalf(nearestBelow - ENTRY_TOLERANCE), roundHalf(nearestBelow + ENTRY_TOLERANCE)],
-      takeProfit: tp,
-      stopLoss: roundHalf(support - GRID_STEP),
-      hint: `接近 ${nearestBelow.toFixed(1)} 支撑格，做多参考，目标 +$${GRID_STEP} → $${tp.toFixed(1)}`,
+      entryZone: [roundPrice(anchorLow - entryTol), roundPrice(anchorLow + entryTol)],
+      takeProfit: longTp,
+      stopLoss: roundPrice(support - stopPad),
+      expectedMove: roundPrice(longMove),
+      hint: `近下沿，做多参考，目标 +$${longMove.toFixed(2)}`,
     };
   }
-  if (distAbove <= ENTRY_TOLERANCE && positionPct >= 55) {
-    const tp = roundHalf(nearestAbove - GRID_STEP);
+  if (distHigh <= entryTol && positionPct >= 55 && shortMove >= MIN_PROFIT) {
     return {
       side: 'short',
-      entryZone: [roundHalf(nearestAbove - ENTRY_TOLERANCE), roundHalf(nearestAbove + ENTRY_TOLERANCE)],
-      takeProfit: tp,
-      stopLoss: roundHalf(resistance + GRID_STEP),
-      hint: `接近 ${nearestAbove.toFixed(1)} 压力格，做空参考，目标 -$${GRID_STEP} → $${tp.toFixed(1)}`,
+      entryZone: [roundPrice(anchorHigh - entryTol), roundPrice(anchorHigh + entryTol)],
+      takeProfit: shortTp,
+      stopLoss: roundPrice(resistance + stopPad),
+      expectedMove: roundPrice(shortMove),
+      hint: `近上沿，做空参考，目标 -$${shortMove.toFixed(2)}`,
     };
   }
-  if (positionPct < 35) {
-    const tp = roundHalf(nearestBelow + GRID_STEP);
+  if (positionPct < 35 && longMove >= MIN_PROFIT) {
     return {
       side: 'long',
-      entryZone: [roundHalf(support), roundHalf(support + 0.3)],
-      takeProfit: tp,
-      stopLoss: roundHalf(support - GRID_STEP),
-      hint: `偏区间下沿 (${positionPct.toFixed(0)}%)，可考虑低吸，目标 $${tp.toFixed(1)}`,
+      entryZone: [roundPrice(support), roundPrice(support + entryTol)],
+      takeProfit: longTp,
+      stopLoss: roundPrice(support - stopPad),
+      expectedMove: roundPrice(longMove),
+      hint: `偏下 (${positionPct.toFixed(0)}%)，低吸参考 +$${longMove.toFixed(2)}`,
     };
   }
-  if (positionPct > 65) {
-    const tp = roundHalf(nearestAbove - GRID_STEP);
+  if (positionPct > 65 && shortMove >= MIN_PROFIT) {
     return {
       side: 'short',
-      entryZone: [roundHalf(resistance - 0.3), roundHalf(resistance)],
-      takeProfit: tp,
-      stopLoss: roundHalf(resistance + GRID_STEP),
-      hint: `偏区间上沿 (${positionPct.toFixed(0)}%)，可考虑高抛，目标 $${tp.toFixed(1)}`,
+      entryZone: [roundPrice(resistance - entryTol), roundPrice(resistance)],
+      takeProfit: shortTp,
+      stopLoss: roundPrice(resistance + stopPad),
+      expectedMove: roundPrice(shortMove),
+      hint: `偏上 (${positionPct.toFixed(0)}%)，高抛参考 -$${shortMove.toFixed(2)}`,
     };
   }
+
+  const waitMove = positionPct <= 50 ? longMove : shortMove;
   return {
     side: 'neutral',
-    entryZone: [roundHalf(price - 0.2), roundHalf(price + 0.2)],
-    takeProfit: roundHalf(price + GRID_STEP),
-    stopLoss: roundHalf(support - GRID_STEP),
-    hint: '区间中部，等待靠近支撑/压力格再操作',
+    entryZone: [roundPrice(price - entryTol), roundPrice(price + entryTol)],
+    takeProfit: positionPct <= 50 ? longTp : shortTp,
+    stopLoss: roundPrice(support - stopPad),
+    expectedMove: roundPrice(Math.max(waitMove, MIN_PROFIT)),
+    hint: '中部，等靠近上下沿再动',
   };
 }
 
-function computeScore(inRangePct: number, width: number, suitable: boolean, alignment: string): number {
+function computeScore(
+  inRangePct: number,
+  width: number,
+  targetMove: number,
+  suitable: boolean,
+  alignment: string
+): number {
   let score = 50;
   if (inRangePct >= 70) {
     score += 25;
@@ -230,12 +277,13 @@ function computeScore(inRangePct: number, width: number, suitable: boolean, alig
   } else if (inRangePct < 45) {
     score -= 20;
   }
-  if (width >= 1 && width <= 4) {
+  if (width >= targetMove * 2) {
     score += 15;
-  } else if (width < 1) {
+  } else if (width < targetMove * 1.2) {
     score -= 15;
-  } else if (width > 6) {
-    score -= 10;
+  }
+  if (targetMove >= MIN_PROFIT) {
+    score += 5;
   }
   if (suitable) {
     score += 10;
@@ -266,33 +314,35 @@ export function analyzeMstrScalp(
   const rawResistance = Math.max(...highs);
   const atr = computeAtr(mstrSlice);
   const buffer = atr * 0.3;
-  const support = roundHalf(Math.max(rawSupport - buffer, rawSupport * 0.998));
-  const resistance = roundHalf(rawResistance + buffer);
+  const support = roundPrice(Math.max(rawSupport - buffer, rawSupport * 0.998));
+  const resistance = roundPrice(rawResistance + buffer);
   const mstrPrice = mstrSlice.at(-1)?.close ?? support;
-  const mid = roundHalf((support + resistance) / 2);
-  const width = roundHalf(resistance - support);
+  const mid = roundPrice((support + resistance) / 2);
+  const width = roundPrice(resistance - support);
   const positionPct =
     width > 0 ? Math.max(0, Math.min(100, ((mstrPrice - support) / width) * 100)) : 50;
+
+  const targetMove = computeTargetMove(mstrSlice, width, atr);
+  const levels = buildLevels(support, resistance, targetMove);
 
   const { inRangePct } = inRangeStats(mstrSlice, support, resistance);
   let suitable = false;
   let suitableReason = '';
-  if (inRangePct >= 65 && width >= 1) {
+  if (inRangePct >= 65 && width >= targetMove * 1.5) {
     suitable = true;
-    suitableReason = `${inRangePct.toFixed(0)}% 时间在区间内，宽度 $${width.toFixed(1)}，适合 +$0.5 震荡`;
-  } else if (width < 1) {
+    suitableReason = `${inRangePct.toFixed(0)}% 在区间内，宽 $${width.toFixed(2)}，建议每趟 ≥$${targetMove.toFixed(2)}`;
+  } else if (width < targetMove * 1.2) {
     suitable = false;
-    suitableReason = `区间仅 $${width.toFixed(1)}，+$0.5 空间有限`;
+    suitableReason = `区间 $${width.toFixed(2)} 偏窄，难做出 ≥$${MIN_PROFIT} 空间`;
   } else if (inRangePct < 50) {
     suitable = false;
     suitableReason = `仅 ${inRangePct.toFixed(0)}% 在区间内，偏趋势`;
   } else {
     suitable = true;
-    suitableReason = `震荡中等，可小仓试探`;
+    suitableReason = `震荡尚可，目标价差约 $${targetMove.toFixed(2)}`;
   }
 
-  const grids = buildGrids(support, resistance);
-  const action = deriveAction(mstrPrice, support, resistance, positionPct, grids);
+  const action = deriveAction(mstrPrice, support, resistance, positionPct, targetMove, levels);
 
   const btcLows = btcSlice.map((c) => c.low);
   const btcHighs = btcSlice.map((c) => c.high);
@@ -304,8 +354,6 @@ export function analyzeMstrScalp(
   const mappedSupport = mapBtcLevelToMstr(btcSupport, btcPrice, mstrPrice, beta);
   const mappedResistance = mapBtcLevelToMstr(btcResistance, btcPrice, mstrPrice, beta);
 
-  const mstrMid = (support + resistance) / 2;
-  const btcMid = (btcSupport + btcResistance) / 2;
   const mstrPos = width > 0 ? (mstrPrice - support) / width : 0.5;
   const btcWidth = btcResistance - btcSupport;
   const btcPos = btcWidth > 0 ? (btcPrice - btcSupport) / btcWidth : 0.5;
@@ -315,10 +363,10 @@ export function analyzeMstrScalp(
   let btcHint = '';
   if (posDiff <= 0.2) {
     alignment = 'aligned';
-    btcHint = 'BTC 与 MSTR 位置同步，参考较可靠';
+    btcHint = 'BTC 与 MSTR 位置同步';
   } else if (posDiff >= 0.4) {
     alignment = 'diverged';
-    btcHint = 'BTC/MSTR 位置背离，谨慎参考映射价位';
+    btcHint = 'BTC/MSTR 背离，映射仅供参考';
   } else {
     btcHint = 'BTC 联动中性';
   }
@@ -327,24 +375,23 @@ export function analyzeMstrScalp(
   const mapDiffResistance = Math.abs(mappedResistance - resistance);
   if (mapDiffSupport > 1.5 || mapDiffResistance > 1.5) {
     alignment = alignment === 'aligned' ? 'neutral' : 'diverged';
-    btcHint += '；映射区间与 K 线区间偏差较大';
+    btcHint += '；映射与 K 线区间偏差大';
   }
 
-  const score = computeScore(inRangePct, width, suitable, alignment);
+  const score = computeScore(inRangePct, width, targetMove, suitable, alignment);
   const scoreHint =
     score >= 75
-      ? '震荡清晰，适合频繁 +$0.5'
+      ? `适合震荡，建议每趟 $${targetMove.toFixed(2)} 左右`
       : score >= 55
         ? '可操作，注意止损'
-        : '环境一般，建议观望或缩小仓位';
+        : '环境一般，观望为主';
 
   const notes = [
     suitableReason,
-    `近 ${window} · ${interval} K · ${mstrSlice.length} 根`,
-    `每格 $${GRID_STEP}，共 ${grids.length} 格`,
+    `近 ${window} · ${interval} · ${mstrSlice.length} 根`,
+    `ATR $${atr.toFixed(2)} · 目标价差 $${targetMove.toFixed(2)}`,
     `BTC Beta(短)=${beta.toFixed(2)}`,
-    `BTC 区间 $${btcSupport.toFixed(0)} ~ $${btcResistance.toFixed(0)}`,
-    '仅供参考，不构成投资建议',
+    '仅供参考',
   ];
 
   return {
@@ -352,19 +399,20 @@ export function analyzeMstrScalp(
     interval,
     mstrSource,
     btcSource,
-    mstrPrice: roundHalf(mstrPrice),
+    mstrPrice: roundPrice(mstrPrice),
+    targetMove,
     range: {
       support,
       resistance,
       mid,
       width,
       positionPct,
-      atr: roundHalf(atr),
+      atr: roundPrice(atr),
       inRangePct,
       suitable,
       suitableReason,
     },
-    grids,
+    levels,
     action,
     btc: {
       price: btcPrice,

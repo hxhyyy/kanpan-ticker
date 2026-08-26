@@ -304,7 +304,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (event.affectsConfiguration('kanpan.readerStealthSeconds')) {
           readerWebview.refresh();
         }
-        if (event.affectsConfiguration('kanpan.mstrScalpRefreshInterval')) {
+        if (
+          event.affectsConfiguration('kanpan.mstrScalpRefreshInterval') ||
+          event.affectsConfiguration('kanpan.mstrScalpPriceInterval')
+        ) {
           mstrScalpService.start();
         }
         quoteDecoration.refresh();

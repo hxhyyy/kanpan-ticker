@@ -119,6 +119,61 @@ async function fetchBinanceFuturesKlines(
   throw lastError instanceof Error ? lastError : new Error('无法获取 Binance 合约 K 线');
 }
 
+async function fetchFuturesLastPrice(symbol: string): Promise<number> {
+  const upper = encodeURIComponent(symbol.toUpperCase());
+  const path = `/fapi/v1/ticker/price?symbol=${upper}`;
+  const bases = [
+    'https://fapi.binance.com',
+    'https://fapi1.binance.com',
+    'https://fapi2.binance.com',
+    'https://fapi3.binance.com',
+  ];
+  let lastError: unknown;
+  for (const base of bases) {
+    try {
+      const body = await httpGet(`${base}${path}`, 8000);
+      const json = JSON.parse(body) as { price?: string };
+      const price = parseFloat(json.price ?? '');
+      if (Number.isFinite(price) && price > 0) {
+        return price;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`无法获取 ${symbol} 合约价`);
+}
+
+async function fetchSpotLastPrice(symbol: string): Promise<number> {
+  const upper = encodeURIComponent(symbol.toUpperCase());
+  const path = `/api/v3/ticker/price?symbol=${upper}`;
+  const urls = [`https://data-api.binance.vision${path}`, `https://api.binance.com${path}`];
+  let lastError: unknown;
+  for (const url of urls) {
+    try {
+      const body = await httpGet(url, 8000);
+      const json = JSON.parse(body) as { price?: string };
+      const price = parseFloat(json.price ?? '');
+      if (Number.isFinite(price) && price > 0) {
+        return price;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`无法获取 ${symbol} 现货价`);
+}
+
+/** MSTR USDT 永续合约最新价 */
+export async function fetchMstrLivePrice(): Promise<number> {
+  return fetchFuturesLastPrice('MSTRUSDT');
+}
+
+/** BTC 现货最新价 */
+export async function fetchBtcLivePrice(): Promise<number> {
+  return fetchSpotLastPrice('BTCUSDT');
+}
+
 /** MSTR USDT 永续合约 K 线（MSTRUSDT） */
 export async function fetchMstrCandles(interval: ChartInterval, limit: number): Promise<ChartSeries> {
   const candles = await fetchBinanceFuturesKlines('MSTRUSDT', interval, limit);

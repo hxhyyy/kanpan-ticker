@@ -65,13 +65,13 @@
 
     const lines = [
       `// mstr ${r.window} ${r.interval}`,
-      `px ${fmt(r.mstrPrice)}  ${sideText(a.side)}`,
+      `px ${fmt(r.mstrPrice)}  ${sideText(a.side)}  tgt ${fmt(r.targetMove)}`,
       `lo ${fmt(r.range.support)}  md ${fmt(r.range.mid)}  hi ${fmt(r.range.resistance)}`,
-      `w ${fmt(r.range.width)}  pos ${pos.toFixed(0)}%  in ${r.range.inRangePct.toFixed(0)}%`,
-      `in ${fmt(a.entryZone[0])}~${fmt(a.entryZone[1])}  out ${fmt(a.takeProfit)}  sl ${fmt(a.stopLoss)}`,
+      `w ${fmt(r.range.width)}  atr ${fmt(r.range.atr)}  pos ${pos.toFixed(0)}%  in ${r.range.inRangePct.toFixed(0)}%`,
+      `in ${fmt(a.entryZone[0])}~${fmt(a.entryZone[1])}  out ${fmt(a.takeProfit)} (+${fmt(a.expectedMove)})  sl ${fmt(a.stopLoss)}`,
       `btc ${fmt(r.btc.price)}  b ${r.btc.beta.toFixed(2)}  map ${fmt(r.btc.mappedSupport)}~${fmt(r.btc.mappedResistance)}`,
       `scr ${r.score}  ${r.scoreHint}`,
-      `@ ${fmtTime(r.refreshedAt)}`,
+      `@ ${fmtTime(r.refreshedAt)}  px~2s  an~1m`,
     ];
 
     if (error) {

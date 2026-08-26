@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.8.3",
+  "version": "0.8.5",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -657,11 +657,17 @@
           "maximum": 600,
           "description": "正文无操作多少秒后自动隐藏（0 表示关闭；隐藏后连续点击 3 次恢复）"
         },
+        "kanpan.mstrScalpPriceInterval": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 1000,
+          "description": "MSTR 短线面板市价刷新间隔（毫秒，默认 2 秒）"
+        },
         "kanpan.mstrScalpRefreshInterval": {
           "type": "number",
-          "default": 90000,
+          "default": 60000,
           "minimum": 30000,
-          "description": "MSTR 短线参考自动刷新间隔（毫秒，默认 90 秒）"
+          "description": "MSTR 短线区间/分析刷新间隔（毫秒，默认 60 秒）"
         }
       }
     }
