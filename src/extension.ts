@@ -10,6 +10,8 @@ import {
 import { QuoteDecorationProvider } from './quoteDecoration';
 import { ReaderService } from './reader/readerService';
 import { ReaderWebviewProvider, selectReaderStealthSeconds } from './reader/readerWebview';
+import { MstrScalpService } from './mstr/mstrScalpService';
+import { MstrScalpWebviewProvider } from './mstr/mstrScalpWebview';
 import { createCryptoDragController, createStockDragController } from './sidebar/reorder';
 import { ReaderTreeProvider } from './sidebar/readerTreeProvider';
 import { bindExtensionContext, CryptoTreeProvider, SettingsTreeProvider, StockTreeProvider } from './sidebar/treeProviders';
@@ -55,6 +57,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const cryptoProvider = new CryptoTreeProvider(store);
   const readerProvider = new ReaderTreeProvider(readerService);
   const readerWebview = new ReaderWebviewProvider(readerService, context.extensionUri);
+  const mstrScalpService = new MstrScalpService();
+  const mstrScalpWebview = new MstrScalpWebviewProvider(mstrScalpService, context.extensionUri);
   const settingsProvider = new SettingsTreeProvider();
 
   const refreshStockView = () => stockProvider.refresh();
@@ -87,6 +91,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     readerView,
     readerService,
     vscode.window.registerWebviewViewProvider(ReaderWebviewProvider.viewType, readerWebview),
+    vscode.window.registerWebviewViewProvider(MstrScalpWebviewProvider.viewType, mstrScalpWebview),
+    mstrScalpService,
+    mstrScalpWebview,
     vscode.window.registerFileDecorationProvider(quoteDecoration),
     store.onUpdate(() => quoteDecoration.refresh()),
     vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider),
@@ -94,6 +101,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await marketService.refresh();
       stockProvider.refresh();
       cryptoProvider.refresh();
+    }),
+    vscode.commands.registerCommand('kanpan.mstrScalpRefresh', async () => {
+      await mstrScalpService.refresh();
     }),
     vscode.commands.registerCommand('kanpan.show', () => marketService.setStatusVisible(true)),
     vscode.commands.registerCommand('kanpan.hide', () => marketService.setStatusVisible(false)),
@@ -293,6 +303,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         readerProvider.refresh();
         if (event.affectsConfiguration('kanpan.readerStealthSeconds')) {
           readerWebview.refresh();
+        }
+        if (event.affectsConfiguration('kanpan.mstrScalpRefreshInterval')) {
+          mstrScalpService.start();
         }
         quoteDecoration.refresh();
       }

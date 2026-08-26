@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.8.1",
+  "version": "0.8.3",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -49,7 +49,8 @@
     "onView:kanpanView.crypto",
     "onView:kanpanView.reader",
     "onView:kanpanView.readerText",
-    "onView:kanpanView.settings"
+    "onView:kanpanView.settings",
+    "onView:kanpanView.mstrScalp"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -91,6 +92,11 @@
           "name": "Crypto"
         },
         {
+          "id": "kanpanView.mstrScalp",
+          "name": "Ref",
+          "type": "webview"
+        },
+        {
           "id": "kanpanView.reader",
           "name": "Reader"
         },
@@ -109,6 +115,11 @@
       {
         "command": "kanpan.refresh",
         "title": "看盘插件: 立即刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "kanpan.mstrScalpRefresh",
+        "title": "看盘插件: 刷新 MSTR 短线参考",
         "icon": "$(refresh)"
       },
       {
@@ -293,6 +304,11 @@
         {
           "command": "kanpan.refresh",
           "when": "view == kanpanView.stock || view == kanpanView.crypto",
+          "group": "navigation"
+        },
+        {
+          "command": "kanpan.mstrScalpRefresh",
+          "when": "view == kanpanView.mstrScalp",
           "group": "navigation"
         },
         {
@@ -640,6 +656,12 @@
           "minimum": 0,
           "maximum": 600,
           "description": "正文无操作多少秒后自动隐藏（0 表示关闭；隐藏后连续点击 3 次恢复）"
+        },
+        "kanpan.mstrScalpRefreshInterval": {
+          "type": "number",
+          "default": 90000,
+          "minimum": 30000,
+          "description": "MSTR 短线参考自动刷新间隔（毫秒，默认 90 秒）"
         }
       }
     }
