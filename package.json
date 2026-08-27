@@ -2,7 +2,7 @@
   "name": "kanpan-ticker",
   "displayName": "Kanpan Ticker (码上看盘)",
   "description": "Real-time US stocks, A-shares & crypto ticker in VS Code / Cursor status bar and sidebar. 美股/A股/加密货币实时行情，状态栏+侧边栏看盘。",
-  "version": "0.8.7",
+  "version": "0.9.0",
   "publisher": "your-name",
   "license": "MIT",
   "repository": {
@@ -50,7 +50,8 @@
     "onView:kanpanView.reader",
     "onView:kanpanView.readerText",
     "onView:kanpanView.settings",
-    "onView:kanpanView.mstrScalp"
+    "onView:kanpanView.mstrScalp",
+    "onView:kanpanView.gridSim"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -97,6 +98,11 @@
           "type": "webview"
         },
         {
+          "id": "kanpanView.gridSim",
+          "name": "Grid",
+          "type": "webview"
+        },
+        {
           "id": "kanpanView.reader",
           "name": "Reader"
         },
@@ -121,6 +127,11 @@
         "command": "kanpan.mstrScalpRefresh",
         "title": "看盘插件: 刷新 MSTR 短线参考",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "kanpan.gridSimRun",
+        "title": "看盘插件: 运行网格模拟",
+        "icon": "$(play)"
       },
       {
         "command": "kanpan.show",
@@ -309,6 +320,11 @@
         {
           "command": "kanpan.mstrScalpRefresh",
           "when": "view == kanpanView.mstrScalp",
+          "group": "navigation"
+        },
+        {
+          "command": "kanpan.gridSimRun",
+          "when": "view == kanpanView.gridSim",
           "group": "navigation"
         },
         {

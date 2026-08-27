@@ -119,6 +119,64 @@ async function fetchBinanceFuturesKlines(
   throw lastError instanceof Error ? lastError : new Error('无法获取 Binance 合约 K 线');
 }
 
+/** 按时间范围拉取合约 K 线（自动分页，最多约 limitMax 根） */
+export async function fetchFuturesKlinesRange(
+  symbol: string,
+  interval: ChartInterval,
+  startMs: number,
+  endMs: number,
+  limitMax = 5000
+): Promise<Candle[]> {
+  const upper = encodeURIComponent(symbol.toUpperCase());
+  const iv = binanceInterval(interval);
+  const bases = [
+    'https://fapi.binance.com',
+    'https://fapi1.binance.com',
+    'https://fapi2.binance.com',
+    'https://fapi3.binance.com',
+  ];
+  const all: Candle[] = [];
+  let cursor = startMs;
+  while (cursor < endMs && all.length < limitMax) {
+    const path =
+      `/fapi/v1/klines?symbol=${upper}&interval=${iv}` +
+      `&startTime=${cursor}&endTime=${endMs}&limit=1500`;
+    let batch: Candle[] | null = null;
+    let lastError: unknown;
+    for (const base of bases) {
+      try {
+        batch = parseBinanceKlines(await httpGet(`${base}${path}`));
+        if (batch.length >= 1) {
+          break;
+        }
+      } catch (error) {
+        lastError = error;
+        batch = null;
+      }
+    }
+    if (!batch || batch.length === 0) {
+      if (all.length === 0 && lastError) {
+        throw lastError instanceof Error ? lastError : new Error('无法获取合约历史 K 线');
+      }
+      break;
+    }
+    all.push(...batch);
+    const lastT = batch[batch.length - 1].t;
+    if (lastT <= cursor) {
+      break;
+    }
+    cursor = lastT + 1;
+    if (batch.length < 1500) {
+      break;
+    }
+  }
+  const map = new Map<number, Candle>();
+  for (const c of all) {
+    map.set(c.t, c);
+  }
+  return [...map.values()].sort((a, b) => a.t - b.t).slice(0, limitMax);
+}
+
 async function fetchFuturesLastPrice(symbol: string): Promise<number> {
   const upper = encodeURIComponent(symbol.toUpperCase());
   const path = `/fapi/v1/ticker/price?symbol=${upper}`;

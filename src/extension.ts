@@ -12,6 +12,8 @@ import { ReaderService } from './reader/readerService';
 import { ReaderWebviewProvider, selectReaderStealthSeconds } from './reader/readerWebview';
 import { MstrScalpService } from './mstr/mstrScalpService';
 import { MstrScalpWebviewProvider } from './mstr/mstrScalpWebview';
+import { GridSimService } from './grid/gridSimService';
+import { GridSimWebviewProvider } from './grid/gridSimWebview';
 import { createCryptoDragController, createStockDragController } from './sidebar/reorder';
 import { ReaderTreeProvider } from './sidebar/readerTreeProvider';
 import { bindExtensionContext, CryptoTreeProvider, SettingsTreeProvider, StockTreeProvider } from './sidebar/treeProviders';
@@ -59,6 +61,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const readerWebview = new ReaderWebviewProvider(readerService, context.extensionUri);
   const mstrScalpService = new MstrScalpService();
   const mstrScalpWebview = new MstrScalpWebviewProvider(mstrScalpService, context.extensionUri);
+  const gridSimService = new GridSimService(context);
+  const gridSimWebview = new GridSimWebviewProvider(gridSimService, context.extensionUri);
   const settingsProvider = new SettingsTreeProvider();
 
   const refreshStockView = () => stockProvider.refresh();
@@ -92,8 +96,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     readerService,
     vscode.window.registerWebviewViewProvider(ReaderWebviewProvider.viewType, readerWebview),
     vscode.window.registerWebviewViewProvider(MstrScalpWebviewProvider.viewType, mstrScalpWebview),
+    vscode.window.registerWebviewViewProvider(GridSimWebviewProvider.viewType, gridSimWebview),
     mstrScalpService,
     mstrScalpWebview,
+    gridSimService,
+    gridSimWebview,
     vscode.window.registerFileDecorationProvider(quoteDecoration),
     store.onUpdate(() => quoteDecoration.refresh()),
     vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider),
@@ -104,6 +111,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('kanpan.mstrScalpRefresh', async () => {
       await mstrScalpService.refresh();
+    }),
+    vscode.commands.registerCommand('kanpan.gridSimRun', async () => {
+      await gridSimService.run();
     }),
     vscode.commands.registerCommand('kanpan.show', () => marketService.setStatusVisible(true)),
     vscode.commands.registerCommand('kanpan.hide', () => marketService.setStatusVisible(false)),
