@@ -111,6 +111,15 @@ export class GridSimWebviewProvider implements vscode.WebviewViewProvider, vscod
     });
   }
 
+  /** 右上角运行：先让页面读取当前表单再回测，避免覆盖用户刚填的参数 */
+  async requestRunFromForm(): Promise<void> {
+    if (!this.view?.webview) {
+      await this.service.run();
+      return;
+    }
+    this.view.webview.postMessage({ type: 'pleaseRun' });
+  }
+
   dispose(): void {
     // service disposed by extension
   }

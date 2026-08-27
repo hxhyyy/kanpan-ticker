@@ -113,7 +113,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await mstrScalpService.refresh();
     }),
     vscode.commands.registerCommand('kanpan.gridSimRun', async () => {
-      await gridSimService.run();
+      await gridSimWebview.requestRunFromForm();
     }),
     vscode.commands.registerCommand('kanpan.show', () => marketService.setStatusVisible(true)),
     vscode.commands.registerCommand('kanpan.hide', () => marketService.setStatusVisible(false)),

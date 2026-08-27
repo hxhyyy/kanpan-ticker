@@ -58,21 +58,32 @@
     };
   }
 
-  function render() {
+  function render(opts) {
+    const preserveForm = !!(opts && opts.preserveForm);
+    let draft = null;
+    if (preserveForm && document.getElementById('lower')) {
+      try {
+        draft = readForm();
+      } catch (_) {
+        draft = null;
+      }
+    }
+
     const { loading, error, params, result } = state;
-    const p = params || {
-      symbol: 'MSTRUSDT',
-      direction: 'neutral',
-      lower: 123,
-      upper: 127,
-      gridCount: 30,
-      gridType: 'arithmetic',
-      investment: 1000,
-      leverage: 3,
-      feeRate: 0.0004,
-      days: 5,
-      maxDdPct: 20,
-    };
+    const p = draft ||
+      params || {
+        symbol: 'MSTRUSDT',
+        direction: 'neutral',
+        lower: 123,
+        upper: 127,
+        gridCount: 30,
+        gridType: 'arithmetic',
+        investment: 1000,
+        leverage: 3,
+        feeRate: 0.0004,
+        days: 5,
+        maxDdPct: 20,
+      };
 
     const feePct = ((p.feeRate || 0.0004) * 100).toFixed(3);
 
@@ -157,14 +168,24 @@
 
   window.addEventListener('message', (event) => {
     const msg = event.data;
+    if (msg?.type === 'pleaseRun') {
+      vscode.postMessage({ type: 'run', params: readForm() });
+      return;
+    }
+    if (msg?.type === 'pleaseOptimize') {
+      vscode.postMessage({ type: 'optimize', params: readForm() });
+      return;
+    }
     if (msg?.type === 'update') {
+      const wasLoading = state.loading;
       state = {
         loading: !!msg.loading,
         error: msg.error || null,
         params: msg.params || null,
         result: msg.result || null,
       };
-      render();
+      // 回测进行中：保留输入框；结束后用实际跑完的参数回填
+      render({ preserveForm: !!state.loading });
     }
   });
 
