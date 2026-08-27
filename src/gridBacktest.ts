@@ -84,10 +84,14 @@ const DEFAULT_PARAMS: BinanceGridParams = {
   maxDdPct: 20,
 };
 
-/** 额外滑点（单边），让回测更接近实盘 */
-const SLIPPAGE = 0.0002;
-/** 维持保证金率近似：权益低于名义仓位×此值视为强平 */
-const MAINT_RATE = 0.004;
+/** 额外滑点（单边） */
+const SLIPPAGE = 0.00015;
+/**
+ * 维持保证金率（保证金率 = 权益/仓位名义）。
+ * 币安多数 U 本位约 0.5%；只有保证金率 ≤ 此值才强平。
+ * 网格通常不满仓，实际很难轻易碰到。
+ */
+const MAINT_MARGIN_RATE = 0.005;
 
 export function defaultGridParams(): BinanceGridParams {
   return { ...DEFAULT_PARAMS };
@@ -184,10 +188,10 @@ function emptyBacktest(candleCount: number, investment: number): GridSimResult['
 }
 
 /**
- * 合约网格回测（更严）：
+ * 合约网格回测：
  * - 中性 / 做多偏多 / 做空偏空
- * - 单边手续费 + 滑点
- * - 简易强平（权益过低清零）
+ * - 单边手续费 + 少量滑点
+ * - 强平按「保证金率 = 权益/仓位名义 ≤ 维持保证金率」（不满仓很难强平）
  * - 用户止损/止盈价
  */
 export function backtestFuturesGrid(
@@ -200,8 +204,8 @@ export function backtestFuturesGrid(
   const stopLoss = params.stopLoss;
   const takeProfit = params.takeProfit;
   const levels = buildGridLevels(lower, upper, gridCount, gridType);
-  const notional = investment * leverage;
-  const perGridUsdt = notional / gridCount;
+  const notionalBudget = investment * leverage;
+  const perGridUsdt = notionalBudget / gridCount;
   const fee = feeRate + SLIPPAGE;
 
   if (candles.length < 2 || investment <= 0 || levels.length < 2) {
@@ -209,45 +213,85 @@ export function backtestFuturesGrid(
   }
 
   const startPrice = candles[0].close;
-  // gridHeld[g]=true 表示该格有仓：多=持有现货/多仓，空=持有空仓
   const gridHeld: boolean[] = Array(gridCount).fill(false);
-  // 每格开仓均价（用于空头平仓）
   const entryPrice: number[] = Array(gridCount).fill(0);
+  const gridQty: number[] = Array(gridCount).fill(0);
 
-  let cash = notional; // 可用名义资金
-  let longQty = 0; // 多头币数
-  let shortQty = 0; // 空头币数
-  let shortEntryNotional = 0; // 空头开仓名义合计（qty*entry）
+  // wallet：保证金账户；realized：已实现盈亏累计
+  let wallet = investment;
+  let realized = 0;
 
   const minLongGrids =
     direction === 'long' ? Math.max(1, Math.floor(gridCount * 0.25)) : 0;
 
+  const openLongGrids = (): number => {
+    let n = 0;
+    for (let i = 0; i < gridCount; i++) {
+      if (gridHeld[i] && gridQty[i] > 0) n++;
+    }
+    return n;
+  };
+
+  const positionNotional = (price: number): number => {
+    let q = 0;
+    for (let i = 0; i < gridCount; i++) {
+      if (gridHeld[i]) q += Math.abs(gridQty[i]);
+    }
+    return q * price;
+  };
+
+  const unrealizedPnl = (price: number): number => {
+    let u = 0;
+    for (let i = 0; i < gridCount; i++) {
+      if (!gridHeld[i] || gridQty[i] === 0) continue;
+      if (gridQty[i] > 0) {
+        u += gridQty[i] * (price - entryPrice[i]);
+      } else {
+        // 空头 qty 存负数
+        u += Math.abs(gridQty[i]) * (entryPrice[i] - price);
+      }
+    }
+    return u;
+  };
+
+  const markEquity = (price: number): number => wallet + realized + unrealizedPnl(price);
+
+  const usedSlots = (): number => gridHeld.filter(Boolean).length;
+
+  // 最多同时占用的格数受杠杆约束：每格占用 investment/gridCount 的保证金
+  const marginPerGrid = investment / gridCount;
+
+  const canOpen = (): boolean => {
+    // 已用保证金 ≈ 持仓格数 * marginPerGrid
+    return usedSlots() * marginPerGrid < investment * 0.98;
+  };
+
   // 初始建仓
   if (direction === 'short') {
     for (let i = 0; i < gridCount; i++) {
-      if (levels[i + 1] > startPrice && cash >= perGridUsdt) {
+      if (levels[i + 1] > startPrice && canOpen()) {
         const px = levels[i + 1] * (1 - SLIPPAGE);
         const qty = (perGridUsdt / px) * (1 - fee);
-        shortQty += qty;
-        shortEntryNotional += qty * px;
-        cash -= perGridUsdt;
+        const openFee = perGridUsdt * fee;
+        realized -= openFee;
         gridHeld[i] = true;
         entryPrice[i] = px;
+        gridQty[i] = -qty; // 空
       }
     }
   } else {
-    // 中性/做多：现价以下买入；做多再多建一些靠近现价的仓
     for (let i = 0; i < gridCount; i++) {
       const shouldBuy =
         levels[i] < startPrice ||
         (direction === 'long' && levels[i] <= startPrice * 1.002);
-      if (shouldBuy && cash >= perGridUsdt) {
+      if (shouldBuy && canOpen()) {
         const px = levels[i] * (1 + SLIPPAGE);
         const qty = (perGridUsdt / px) * (1 - fee);
-        longQty += qty;
-        cash -= perGridUsdt;
+        const openFee = perGridUsdt * fee;
+        realized -= openFee;
         gridHeld[i] = true;
         entryPrice[i] = px;
+        gridQty[i] = qty;
       }
     }
   }
@@ -257,119 +301,115 @@ export function backtestFuturesGrid(
   let maxDd = 0;
   let stopped: GridStopReason = 'none';
 
-  const markEquity = (price: number): number => {
-    const longValue = longQty * price;
-    const shortPnl = shortQty > 0 ? shortEntryNotional - shortQty * price : 0;
-    const book = cash + longValue + shortPnl;
-    return investment + (book - notional);
+  const flattenAll = (price: number): void => {
+    for (let i = 0; i < gridCount; i++) {
+      if (!gridHeld[i] || gridQty[i] === 0) continue;
+      const q = gridQty[i];
+      if (q > 0) {
+        const pnl = q * (price - entryPrice[i]);
+        const closeFee = q * price * fee;
+        realized += pnl - closeFee;
+      } else {
+        const aq = Math.abs(q);
+        const pnl = aq * (entryPrice[i] - price);
+        const closeFee = aq * price * fee;
+        realized += pnl - closeFee;
+      }
+      gridHeld[i] = false;
+      entryPrice[i] = 0;
+      gridQty[i] = 0;
+    }
   };
-
-  const heldCount = () => gridHeld.filter(Boolean).length;
 
   for (let ci = 1; ci < candles.length; ci++) {
     const low = candles[ci].low;
     const high = candles[ci].high;
     const close = candles[ci].close;
 
-    // 用户止损/止盈（按收盘）
     if (stopLoss != null && close <= stopLoss) {
-      const eq = markEquity(close);
-      cash = notional + (eq - investment);
-      longQty = 0;
-      shortQty = 0;
-      shortEntryNotional = 0;
-      gridHeld.fill(false);
+      flattenAll(close);
       stopped = 'stopLoss';
       break;
     }
     if (takeProfit != null && close >= takeProfit) {
-      const eq = markEquity(close);
-      cash = notional + (eq - investment);
-      longQty = 0;
-      shortQty = 0;
-      shortEntryNotional = 0;
-      gridHeld.fill(false);
+      flattenAll(close);
       stopped = 'takeProfit';
       break;
     }
 
-    // 简易强平：权益过低 或 低于维持保证金近似
+    // 币安风格：保证金率 = 权益 / 仓位名义价值；≤ 维持保证金率才强平
     {
-      const eq = markEquity(close);
-      const posNotional = longQty * close + shortQty * close;
-      const maint = posNotional * MAINT_RATE;
-      if (eq <= Math.max(investment * 0.02, maint) || eq <= 0) {
-        cash = 0;
-        longQty = 0;
-        shortQty = 0;
-        shortEntryNotional = 0;
-        gridHeld.fill(false);
-        stopped = 'liquidated';
-        // 强平后权益记 0
-        peakEquity = Math.max(peakEquity, investment);
-        maxDd = Math.max(maxDd, 1);
-        break;
+      const posN = positionNotional(close);
+      if (posN > 0) {
+        const eq = markEquity(close);
+        const marginRatio = eq / posN;
+        // 只有几乎亏光保证金时才强平（网格不满仓时，要很大逆行才触发）
+        if (eq <= 0 || marginRatio <= MAINT_MARGIN_RATE) {
+          flattenAll(close);
+          // 强平后剩余权益按当前结算；若已为负则归零
+          const left = Math.max(0, wallet + realized);
+          wallet = left;
+          realized = 0;
+          stopped = 'liquidated';
+          const eqNow = wallet;
+          peakEquity = Math.max(peakEquity, investment, eqNow);
+          maxDd = Math.max(maxDd, peakEquity > 0 ? (peakEquity - eqNow) / peakEquity : 0);
+          break;
+        }
       }
     }
 
     if (direction === 'short') {
-      // 空头网格：涨到卖价开空，跌到买价平空
       for (let g = 0; g < gridCount; g++) {
         const buyPrice = levels[g];
         const sellPrice = levels[g + 1];
-        if (!gridHeld[g] && high >= sellPrice && cash >= perGridUsdt) {
+        if (!gridHeld[g] && high >= sellPrice && canOpen()) {
           const px = sellPrice * (1 - SLIPPAGE);
           const qty = (perGridUsdt / px) * (1 - fee);
-          shortQty += qty;
-          shortEntryNotional += qty * px;
-          cash -= perGridUsdt;
+          realized -= perGridUsdt * fee;
           gridHeld[g] = true;
           entryPrice[g] = px;
+          gridQty[g] = -qty;
           trades++;
         }
-        if (gridHeld[g] && low <= buyPrice) {
+        if (gridHeld[g] && gridQty[g] < 0 && low <= buyPrice) {
           const px = buyPrice * (1 + SLIPPAGE);
-          const qty = perGridUsdt / entryPrice[g];
-          if (shortQty >= qty * 0.99) {
-            const pnl = qty * (entryPrice[g] - px);
-            cash += perGridUsdt + pnl;
-            cash -= qty * px * fee; // 平仓费
-            shortQty -= qty;
-            shortEntryNotional -= qty * entryPrice[g];
-            if (shortEntryNotional < 0) shortEntryNotional = 0;
-            gridHeld[g] = false;
-            entryPrice[g] = 0;
-            trades++;
-          }
+          const aq = Math.abs(gridQty[g]);
+          const pnl = aq * (entryPrice[g] - px);
+          const closeFee = aq * px * fee;
+          realized += pnl - closeFee;
+          gridHeld[g] = false;
+          entryPrice[g] = 0;
+          gridQty[g] = 0;
+          trades++;
         }
       }
     } else {
-      // 中性 / 做多：跌买涨卖；做多保留底仓
       for (let g = 0; g < gridCount; g++) {
         const buyPrice = levels[g];
         const sellPrice = levels[g + 1];
-        if (!gridHeld[g] && low <= buyPrice && cash >= perGridUsdt) {
+        if (!gridHeld[g] && low <= buyPrice && canOpen()) {
           const px = buyPrice * (1 + SLIPPAGE);
           const qty = (perGridUsdt / px) * (1 - fee);
-          longQty += qty;
-          cash -= perGridUsdt;
+          realized -= perGridUsdt * fee;
           gridHeld[g] = true;
           entryPrice[g] = px;
+          gridQty[g] = qty;
           trades++;
         }
-        if (gridHeld[g] && high >= sellPrice) {
-          if (direction === 'long' && heldCount() <= minLongGrids) {
-            continue; // 做多保留底仓不卖光
+        if (gridHeld[g] && gridQty[g] > 0 && high >= sellPrice) {
+          if (direction === 'long' && openLongGrids() <= minLongGrids) {
+            continue;
           }
           const px = sellPrice * (1 - SLIPPAGE);
-          const qty = perGridUsdt / entryPrice[g];
-          if (longQty >= qty * 0.99) {
-            cash += qty * px * (1 - fee);
-            longQty -= qty;
-            gridHeld[g] = false;
-            entryPrice[g] = 0;
-            trades++;
-          }
+          const q = gridQty[g];
+          const pnl = q * (px - entryPrice[g]);
+          const closeFee = q * px * fee;
+          realized += pnl - closeFee;
+          gridHeld[g] = false;
+          entryPrice[g] = 0;
+          gridQty[g] = 0;
+          trades++;
         }
       }
     }
@@ -377,16 +417,14 @@ export function backtestFuturesGrid(
     const equity = markEquity(close);
     peakEquity = Math.max(peakEquity, equity);
     if (peakEquity > 0) {
-      maxDd = Math.max(maxDd, (peakEquity - equity) / peakEquity);
+      maxDd = Math.max(maxDd, Math.max(0, (peakEquity - equity) / peakEquity));
     }
   }
 
-  let finalEquity: number;
-  if (stopped === 'liquidated') {
-    finalEquity = 0;
-  } else {
-    finalEquity = markEquity(candles[candles.length - 1].close);
-  }
+  const finalEquity =
+    stopped === 'liquidated'
+      ? Math.max(0, wallet + realized)
+      : Math.max(0, markEquity(candles[candles.length - 1].close));
   const netProfitUsdt = finalEquity - investment;
   const netRoiPct = investment > 0 ? (netProfitUsdt / investment) * 100 : 0;
 
@@ -408,10 +446,10 @@ export const backtestNeutralGrid = backtestFuturesGrid;
 function buildWarnings(p: BinanceGridParams, bt: GridSimResult['backtest'], inRangePct: number): string[] {
   const w: string[] = [];
   if (p.leverage >= 10) {
-    w.push(`杠杆 ${p.leverage}x 偏高，回测已含强平，实盘风险极大`);
+    w.push(`杠杆 ${p.leverage}x 偏高，逆行过大仍可能强平，建议先用 3～5x`);
   }
   if (bt.stopped === 'liquidated') {
-    w.push('回测中触发强平，期末按归零计');
+    w.push('回测中触及维持保证金率而强平（网格不满仓时较少见）');
   }
   if (bt.maxDrawdownPct >= 40) {
     w.push(`最大回撤 ${bt.maxDrawdownPct.toFixed(1)}% 过高，不建议照搬`);
