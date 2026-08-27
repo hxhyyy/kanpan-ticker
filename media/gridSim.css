@@ -68,3 +68,8 @@ button.link:hover {
 .err {
   opacity: 0.85;
 }
+
+.hint {
+  margin: 0 0 6px;
+  font-size: 10px;
+}

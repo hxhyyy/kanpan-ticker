@@ -24,6 +24,8 @@ export interface BinanceGridParams {
   takeProfit?: number;
   /** 回测天数 */
   days: number;
+  /** 扫参时最大可接受回撤%（用户设，默认 20） */
+  maxDdPct?: number;
 }
 
 export interface GridSimResult {
@@ -49,6 +51,21 @@ export interface GridSimResult {
     stopped: 'none' | 'stopLoss' | 'takeProfit';
   };
   binanceHint: string[];
+  /** 扫参时附带的备选 */
+  alternatives?: Array<{
+    lower: number;
+    upper: number;
+    gridCount: number;
+    gridType: GridType;
+    netRoiPct: number;
+    maxDrawdownPct: number;
+    tradeCount: number;
+    score: number;
+  }>;
+  optimizeMeta?: {
+    tried: number;
+    passed: number;
+  };
   refreshedAt: number;
 }
 
@@ -63,6 +80,7 @@ const DEFAULT_PARAMS: BinanceGridParams = {
   leverage: 3,
   feeRate: 0.0004,
   days: 5,
+  maxDdPct: 20,
 };
 
 export function defaultGridParams(): BinanceGridParams {
@@ -343,6 +361,179 @@ export async function runBinanceGridSim(params: BinanceGridParams): Promise<Grid
     oscillation,
     backtest,
     binanceHint,
+    refreshedAt: Date.now(),
+  };
+}
+
+function scoreGridResult(bt: GridSimResult['backtest'], ppg: number, feeRate: number): number {
+  const feeOk = ppg >= feeRate * 2 ? 2 : -5;
+  const tradeFactor = Math.min(bt.tradeCount / 30, 1) * 3;
+  return bt.netRoiPct - bt.maxDrawdownPct * 0.5 + tradeFactor + feeOk;
+}
+
+/**
+ * 自动扫参：用户固定 投入/杠杆/费率/天数/方向/最大回撤；
+ * 自动搜索 区间 × 网格数 × 等差/等比，返回最优并写回参数。
+ */
+export async function optimizeBinanceGrid(
+  base: BinanceGridParams
+): Promise<GridSimResult> {
+  const p0: BinanceGridParams = {
+    ...defaultGridParams(),
+    ...base,
+    symbol: (base.symbol || 'MSTRUSDT').toUpperCase(),
+    investment: Math.max(10, Number(base.investment) || 1000),
+    leverage: Math.max(1, Math.min(20, Number(base.leverage) || 1)),
+    feeRate: Math.max(0, Number(base.feeRate) || 0.0004),
+    days: Math.max(1, Math.min(30, Math.floor(Number(base.days) || 5))),
+    maxDdPct: Math.max(1, Math.min(80, Number(base.maxDdPct) || 20)),
+  };
+
+  const end = Date.now();
+  const start = end - p0.days * 24 * 60 * 60 * 1000;
+  const candles = await fetchFuturesKlinesRange(p0.symbol, '5m', start, end, 5000);
+  if (candles.length < 20) {
+    throw new Error('历史 K 线不足，请稍后重试');
+  }
+
+  const rawLo = Math.min(...candles.map((c) => c.low));
+  const rawHi = Math.max(...candles.map((c) => c.high));
+  const mid = (rawLo + rawHi) / 2;
+  const half = (rawHi - rawLo) / 2;
+
+  // 区间候选：全区间 / 收窄 / 略放宽 / 以中轴对称
+  const rangeScales = [1.0, 0.9, 0.8, 0.7, 1.05];
+  const ranges: Array<{ lower: number; upper: number }> = [];
+  for (const s of rangeScales) {
+    const lower = roundPrice(mid - half * s);
+    const upper = roundPrice(mid + half * s);
+    if (lower < upper) {
+      ranges.push({ lower, upper });
+    }
+  }
+  // 再加：近期 50% 分位更紧的区间（去掉极端高低）
+  const sorted = [...candles].map((c) => c.close).sort((a, b) => a - b);
+  const p10 = sorted[Math.floor(sorted.length * 0.1)];
+  const p90 = sorted[Math.floor(sorted.length * 0.9)];
+  if (p10 < p90) {
+    ranges.push({ lower: roundPrice(p10), upper: roundPrice(p90) });
+  }
+
+  const counts = [15, 20, 25, 30, 35, 40, 50, 60];
+  const types: GridType[] = ['arithmetic', 'geometric'];
+  const maxDd = p0.maxDdPct ?? 20;
+
+  type Cand = {
+    lower: number;
+    upper: number;
+    gridCount: number;
+    gridType: GridType;
+    netRoiPct: number;
+    maxDrawdownPct: number;
+    tradeCount: number;
+    score: number;
+    bt: GridSimResult['backtest'];
+    ppg: number;
+  };
+
+  const passed: Cand[] = [];
+  let tried = 0;
+
+  for (const range of ranges) {
+    for (const gridCount of counts) {
+      for (const gridType of types) {
+        tried++;
+        const trial: BinanceGridParams = {
+          ...p0,
+          lower: range.lower,
+          upper: range.upper,
+          gridCount,
+          gridType,
+        };
+        const ppg = profitPerGridPct(range.lower, range.upper, gridCount, gridType);
+        // 每格利润需至少盖住约 2 倍单边费
+        if (ppg < p0.feeRate * 1.8) {
+          continue;
+        }
+        const bt = backtestNeutralGrid(candles, trial);
+        bt.interval = '5m';
+        if (bt.maxDrawdownPct > maxDd) {
+          continue;
+        }
+        if (bt.tradeCount < 4) {
+          continue;
+        }
+        const score = scoreGridResult(bt, ppg, p0.feeRate);
+        passed.push({
+          lower: range.lower,
+          upper: range.upper,
+          gridCount,
+          gridType,
+          netRoiPct: bt.netRoiPct,
+          maxDrawdownPct: bt.maxDrawdownPct,
+          tradeCount: bt.tradeCount,
+          score,
+          bt,
+          ppg,
+        });
+      }
+    }
+  }
+
+  if (passed.length === 0) {
+    throw new Error(`扫参无结果：放宽 maxDd（现 ${maxDd}%）或增加天数后再试`);
+  }
+
+  passed.sort((a, b) => b.score - a.score);
+  const best = passed[0];
+  const alternatives = passed.slice(1, 4).map((c) => ({
+    lower: c.lower,
+    upper: c.upper,
+    gridCount: c.gridCount,
+    gridType: c.gridType,
+    netRoiPct: c.netRoiPct,
+    maxDrawdownPct: c.maxDrawdownPct,
+    tradeCount: c.tradeCount,
+    score: Math.round(c.score * 100) / 100,
+  }));
+
+  const bestParams: BinanceGridParams = {
+    ...p0,
+    lower: best.lower,
+    upper: best.upper,
+    gridCount: best.gridCount,
+    gridType: best.gridType,
+  };
+
+  let currentPrice = candles[candles.length - 1].close;
+  try {
+    currentPrice = await fetchMstrLivePrice();
+  } catch {
+    // keep
+  }
+
+  const levels = buildGridLevels(best.lower, best.upper, best.gridCount, best.gridType);
+  const notional = bestParams.investment * bestParams.leverage;
+  const oscillation = checkOscillation(candles, best.lower, best.upper);
+  const feeRoundTrip = bestParams.feeRate * 2;
+
+  return {
+    params: bestParams,
+    currentPrice: roundPrice(currentPrice),
+    profitPerGridPct: best.ppg,
+    perGridUsdt: Math.round((notional / best.gridCount) * 100) / 100,
+    levels: levels.map(roundPrice),
+    oscillation,
+    backtest: best.bt,
+    binanceHint: [
+      `最优: lo ${best.lower} hi ${best.upper} n=${best.gridCount} ${best.gridType === 'arithmetic' ? '等差' : '等比'}`,
+      `试了 ${tried} 组，通过 ${passed.length} 组（maxDd≤${maxDd}%）`,
+      `每格 ${(best.ppg * 100).toFixed(3)}% · 往返费 ${(feeRoundTrip * 100).toFixed(2)}%`,
+      oscillation.reason,
+      '最优基于历史回测，实盘请小资金验证',
+    ],
+    alternatives,
+    optimizeMeta: { tried, passed: passed.length },
     refreshedAt: Date.now(),
   };
 }

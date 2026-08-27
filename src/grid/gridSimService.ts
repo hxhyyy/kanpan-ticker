@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import {
   defaultGridParams,
+  optimizeBinanceGrid,
   runBinanceGridSim,
   suggestGridRange,
   type BinanceGridParams,
@@ -61,6 +62,26 @@ export class GridSimService implements vscode.Disposable {
     this.emitter.fire(this.result);
     try {
       this.result = await runBinanceGridSim(this.params);
+      this.error = null;
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.loading = false;
+      this.emitter.fire(this.result);
+    }
+  }
+
+  /** 自动扫参：找最优区间+格数，并写回 params */
+  async optimize(): Promise<void> {
+    if (this.loading || this.disposed) {
+      return;
+    }
+    this.loading = true;
+    this.emitter.fire(this.result);
+    try {
+      this.result = await optimizeBinanceGrid(this.params);
+      this.params = { ...this.result.params };
+      await this.context.globalState.update(STORAGE_KEY, this.params);
       this.error = null;
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);

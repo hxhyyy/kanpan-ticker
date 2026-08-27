@@ -56,10 +56,14 @@ export class GridSimWebviewProvider implements vscode.WebviewViewProvider, vscod
             await this.service.autoRange();
             this.pushUpdate();
             await this.service.run();
-          } catch (err) {
-            // push with error via run failure path
+          } catch {
             await this.service.run();
           }
+        } else if (msg?.type === 'optimize') {
+          if (msg.params) {
+            await this.service.setParams(msg.params);
+          }
+          await this.service.optimize();
         } else if (msg?.type === 'setParams' && msg.params) {
           await this.service.setParams(msg.params);
           this.pushUpdate();
