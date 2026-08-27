@@ -34,7 +34,7 @@ button.link:hover {
 
 .form {
   display: grid;
-  grid-template-columns: 52px 1fr;
+  grid-template-columns: 72px 1fr;
   gap: 3px 6px;
   margin-bottom: 8px;
   opacity: 0.9;
