@@ -64,15 +64,23 @@
     const pos = r.range.positionPct;
 
     const lines = [
-      `// mstr ${r.window} ${r.interval}`,
-      `px ${fmt(r.mstrPrice)}  ${sideText(a.side)}  tgt ${fmt(r.targetMove)}`,
+      `// mstr ${r.window} ${r.interval}  ses ${r.session}`,
+      `px ${fmt(r.mstrPrice)}  ${sideText(a.side)}  tgt ${fmt(r.targetMove)}  go ${r.gate.tradeable ? 'y' : 'n'}`,
       `lo ${fmt(r.range.support)}  md ${fmt(r.range.mid)}  hi ${fmt(r.range.resistance)}`,
       `w ${fmt(r.range.width)}  atr ${fmt(r.range.atr)}  pos ${pos.toFixed(0)}%  in ${r.range.inRangePct.toFixed(0)}%`,
-      `in ${fmt(a.entryZone[0])}~${fmt(a.entryZone[1])}  out ${fmt(a.takeProfit)} (+${fmt(a.expectedMove)})  sl ${fmt(a.stopLoss)}`,
-      `btc ${fmt(r.btc.price)}  b ${r.btc.beta.toFixed(2)}  map ${fmt(r.btc.mappedSupport)}~${fmt(r.btc.mappedResistance)}`,
-      `scr ${r.score}  ${r.scoreHint}`,
-      `@ ${fmtTime(r.refreshedAt)}  px~2s  an~1m`,
+      `in ${fmt(a.entryZone[0])}~${fmt(a.entryZone[1])}  out ${fmt(a.takeProfit)}  net +${fmt(r.fees.netExpectedMove)}  sl ${fmt(a.stopLoss)}`,
+      `btc ${fmt(r.btc.price)}  lo ${fmt(r.btc.support)}  hi ${fmt(r.btc.resistance)}  b ${r.btc.beta.toFixed(2)}`,
+      `map ${fmt(r.btc.mappedSupport)}~${fmt(r.btc.mappedResistance)}  ${r.btc.alignment}`,
+      `scr ${r.score}  ${r.gate.tradeable ? r.scoreHint : r.gate.reason}`,
     ];
+
+    if (r.backtest && r.backtest.trades > 0) {
+      lines.push(
+        `bt ${r.backtest.sample} n=${r.backtest.trades} wr ${r.backtest.winRate.toFixed(0)}% avg ${r.backtest.avgNet >= 0 ? '+' : ''}${fmt(r.backtest.avgNet)}`
+      );
+    }
+
+    lines.push(`@ ${fmtTime(r.refreshedAt)}  px~2s  an~1m`);
 
     if (error) {
       lines.push(`! ${error}`);

@@ -2,9 +2,24 @@ import type { Candle } from './chartData';
 import { fetchBtcCandles, fetchMstrCandles, type ChartInterval } from './chartData';
 
 export type ScalpWindow = '1h' | '2h' | '4h';
+export type MstrSession = 'us' | 'asia';
 
 /** 单次操作至少值得赚的价差（美元） */
 const MIN_PROFIT = 0.4;
+/** 单边手续费（默认 taker 0.04%） */
+const FEE_RATE = 0.0004;
+/** 单边估计滑点 */
+const SLIPPAGE_RATE = 0.0002;
+
+export interface ScalpBacktest {
+  /** 回测样本描述 */
+  sample: string;
+  trades: number;
+  winRate: number;
+  avgNet: number;
+  totalNet: number;
+  maxDrawdown: number;
+}
 
 export interface MstrScalpReport {
   window: ScalpWindow;
@@ -12,8 +27,9 @@ export interface MstrScalpReport {
   mstrSource: string;
   btcSource: string;
   mstrPrice: number;
-  /** 本次窗口建议的单趟目标价差 */
   targetMove: number;
+  session: MstrSession;
+  sessionHint: string;
   range: {
     support: number;
     resistance: number;
@@ -25,7 +41,6 @@ export interface MstrScalpReport {
     suitable: boolean;
     suitableReason: string;
   };
-  /** 按 targetMove 切分的参考价位 */
   levels: number[];
   action: {
     side: 'long' | 'short' | 'neutral';
@@ -34,6 +49,14 @@ export interface MstrScalpReport {
     stopLoss: number;
     expectedMove: number;
     hint: string;
+  };
+  fees: {
+    roundTripUsd: number;
+    netExpectedMove: number;
+  };
+  gate: {
+    tradeable: boolean;
+    reason: string;
   };
   btc: {
     price: number;
@@ -47,6 +70,7 @@ export interface MstrScalpReport {
   };
   score: number;
   scoreHint: string;
+  backtest: ScalpBacktest | null;
   notes: string[];
   refreshedAt: number;
 }
@@ -60,6 +84,25 @@ function windowConfig(window: ScalpWindow): { interval: ChartInterval; bars: num
     case '4h':
       return { interval: '5m', bars: 48 };
   }
+}
+
+export function getMstrSession(now = new Date()): MstrSession {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Shanghai',
+      hour: 'numeric',
+      hour12: false,
+    }).format(now)
+  );
+  // 美股正盘约北京 22:30–05:00，简化为 22–5
+  if (hour >= 22 || hour < 5) {
+    return 'us';
+  }
+  return 'asia';
+}
+
+export function sessionHint(session: MstrSession): string {
+  return session === 'us' ? '美股活跃时段' : '亚洲时段，MSTR 波动常偏弱';
 }
 
 export function computeAtr(candles: Candle[], period = 14): number {
@@ -95,10 +138,6 @@ function medianBarRange(candles: Candle[]): number {
   return ranges[Math.floor(ranges.length / 2)];
 }
 
-/**
- * 根据近几小时波动，估算「这一趟值得做」的目标价差。
- * 不低于 MIN_PROFIT，也不超过区间宽度的 45%。
- */
 export function computeTargetMove(candles: Candle[], width: number, atr: number): number {
   const med = medianBarRange(candles);
   let step = Math.max(MIN_PROFIT, med * 1.4, atr * 0.55);
@@ -107,6 +146,10 @@ export function computeTargetMove(candles: Candle[], width: number, atr: number)
   }
   step = Math.min(step, 2.5);
   return roundPrice(Math.max(step, MIN_PROFIT));
+}
+
+function roundTripCostUsd(price: number): number {
+  return price * (FEE_RATE + SLIPPAGE_RATE) * 2;
 }
 
 function buildLevels(support: number, resistance: number, step: number): number[] {
@@ -217,7 +260,7 @@ function deriveAction(
       takeProfit: longTp,
       stopLoss: roundPrice(support - stopPad),
       expectedMove: roundPrice(longMove),
-      hint: `近下沿，做多参考，目标 +$${longMove.toFixed(2)}`,
+      hint: `近下沿做多，目标 +$${longMove.toFixed(2)}`,
     };
   }
   if (distHigh <= entryTol && positionPct >= 55 && shortMove >= MIN_PROFIT) {
@@ -227,7 +270,7 @@ function deriveAction(
       takeProfit: shortTp,
       stopLoss: roundPrice(resistance + stopPad),
       expectedMove: roundPrice(shortMove),
-      hint: `近上沿，做空参考，目标 -$${shortMove.toFixed(2)}`,
+      hint: `近上沿做空，目标 -$${shortMove.toFixed(2)}`,
     };
   }
   if (positionPct < 35 && longMove >= MIN_PROFIT) {
@@ -237,7 +280,7 @@ function deriveAction(
       takeProfit: longTp,
       stopLoss: roundPrice(support - stopPad),
       expectedMove: roundPrice(longMove),
-      hint: `偏下 (${positionPct.toFixed(0)}%)，低吸参考 +$${longMove.toFixed(2)}`,
+      hint: `偏下 (${positionPct.toFixed(0)}%)，低吸 +$${longMove.toFixed(2)}`,
     };
   }
   if (positionPct > 65 && shortMove >= MIN_PROFIT) {
@@ -247,7 +290,7 @@ function deriveAction(
       takeProfit: shortTp,
       stopLoss: roundPrice(resistance + stopPad),
       expectedMove: roundPrice(shortMove),
-      hint: `偏上 (${positionPct.toFixed(0)}%)，高抛参考 -$${shortMove.toFixed(2)}`,
+      hint: `偏上 (${positionPct.toFixed(0)}%)，高抛 -$${shortMove.toFixed(2)}`,
     };
   }
 
@@ -258,8 +301,60 @@ function deriveAction(
     takeProfit: positionPct <= 50 ? longTp : shortTp,
     stopLoss: roundPrice(support - stopPad),
     expectedMove: roundPrice(Math.max(waitMove, MIN_PROFIT)),
-    hint: '中部，等靠近上下沿再动',
+    hint: '中部，等靠近上下沿',
   };
+}
+
+function evaluateGate(input: {
+  session: MstrSession;
+  suitable: boolean;
+  suitableReason: string;
+  inRangePct: number;
+  width: number;
+  targetMove: number;
+  actionSide: MstrScalpReport['action']['side'];
+  netExpectedMove: number;
+  alignment: MstrScalpReport['btc']['alignment'];
+  positionPct: number;
+}): MstrScalpReport['gate'] {
+  const {
+    session,
+    suitable,
+    suitableReason,
+    inRangePct,
+    width,
+    targetMove,
+    actionSide,
+    netExpectedMove,
+    alignment,
+    positionPct,
+  } = input;
+
+  if (session === 'asia' && width < targetMove * 1.8) {
+    return { tradeable: false, reason: '亚洲时段区间偏窄' };
+  }
+  if (!suitable) {
+    return { tradeable: false, reason: suitableReason };
+  }
+  if (inRangePct < 60) {
+    return { tradeable: false, reason: '震荡占比不足' };
+  }
+  if (actionSide === 'neutral') {
+    return { tradeable: false, reason: '中部观望' };
+  }
+  if (netExpectedMove < MIN_PROFIT * 0.85) {
+    return { tradeable: false, reason: '扣费后空间不足' };
+  }
+  if (alignment === 'diverged') {
+    return { tradeable: false, reason: 'BTC 背离' };
+  }
+  if (actionSide === 'long' && positionPct > 50) {
+    return { tradeable: false, reason: '做多但位置偏高' };
+  }
+  if (actionSide === 'short' && positionPct < 50) {
+    return { tradeable: false, reason: '做空但位置偏低' };
+  }
+  return { tradeable: true, reason: '条件满足' };
 }
 
 function computeScore(
@@ -267,7 +362,9 @@ function computeScore(
   width: number,
   targetMove: number,
   suitable: boolean,
-  alignment: string
+  alignment: string,
+  session: MstrSession,
+  tradeable: boolean
 ): number {
   let score = 50;
   if (inRangePct >= 70) {
@@ -282,9 +379,6 @@ function computeScore(
   } else if (width < targetMove * 1.2) {
     score -= 15;
   }
-  if (targetMove >= MIN_PROFIT) {
-    score += 5;
-  }
   if (suitable) {
     score += 10;
   }
@@ -293,7 +387,115 @@ function computeScore(
   } else if (alignment === 'diverged') {
     score -= 10;
   }
+  if (session === 'us') {
+    score += 8;
+  } else {
+    score -= 8;
+  }
+  if (tradeable) {
+    score += 10;
+  } else {
+    score -= 12;
+  }
   return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+/** 滚动窗口简易回测（扣双边手续费+滑点） */
+export function backtestScalp(
+  mstrCandles: Candle[],
+  btcCandles: Candle[],
+  window: ScalpWindow
+): ScalpBacktest | null {
+  const { bars } = windowConfig(window);
+  const minStart = bars + 5;
+  if (mstrCandles.length < minStart + bars) {
+    return null;
+  }
+
+  const step = Math.max(10, Math.floor(bars / 3));
+  const maxHold = bars;
+  let trades = 0;
+  let wins = 0;
+  let totalNet = 0;
+  let peak = 0;
+  let equity = 0;
+  let maxDrawdown = 0;
+
+  for (let i = minStart; i < mstrCandles.length - 5; i += step) {
+    const mstrSlice = mstrCandles.slice(i - bars, i);
+    const btcSlice = btcCandles.slice(i - bars, i);
+    if (mstrSlice.length < bars || btcSlice.length < bars) {
+      continue;
+    }
+
+    const snap = analyzeMstrScalp(mstrSlice, btcSlice, window, windowConfig(window).interval, 'bt', 'bt', {
+      skipBacktest: true,
+    });
+    if (!snap.gate.tradeable || snap.action.side === 'neutral') {
+      continue;
+    }
+
+    const side = snap.action.side;
+    const rawEntry = mstrCandles[i].close;
+    const entry = rawEntry * (1 + (side === 'long' ? SLIPPAGE_RATE : -SLIPPAGE_RATE));
+    const tp = snap.action.takeProfit;
+    const sl = snap.action.stopLoss;
+
+    let exitPrice = rawEntry;
+    let closed = false;
+    for (let j = i + 1; j < Math.min(i + maxHold, mstrCandles.length); j++) {
+      const c = mstrCandles[j];
+      if (side === 'long') {
+        if (c.low <= sl) {
+          exitPrice = sl * (1 - SLIPPAGE_RATE);
+          closed = true;
+          break;
+        }
+        if (c.high >= tp) {
+          exitPrice = tp * (1 - SLIPPAGE_RATE);
+          closed = true;
+          break;
+        }
+      } else {
+        if (c.high >= sl) {
+          exitPrice = sl * (1 + SLIPPAGE_RATE);
+          closed = true;
+          break;
+        }
+        if (c.low <= tp) {
+          exitPrice = tp * (1 + SLIPPAGE_RATE);
+          closed = true;
+          break;
+        }
+      }
+    }
+    if (!closed) {
+      const last = mstrCandles[Math.min(i + maxHold - 1, mstrCandles.length - 1)].close;
+      exitPrice = last * (1 + (side === 'long' ? -SLIPPAGE_RATE : SLIPPAGE_RATE));
+    }
+
+    const gross = side === 'long' ? exitPrice - entry : entry - exitPrice;
+    const fees = entry * FEE_RATE + Math.abs(exitPrice) * FEE_RATE;
+    const net = gross - fees;
+    trades++;
+    if (net > 0) {
+      wins++;
+    }
+    totalNet += net;
+    equity += net;
+    peak = Math.max(peak, equity);
+    maxDrawdown = Math.max(maxDrawdown, peak - equity);
+  }
+
+  const hours = Math.round(mstrCandles.length / (window === '4h' ? 12 : 60));
+  return {
+    sample: `~${hours}h`,
+    trades,
+    winRate: trades > 0 ? (wins / trades) * 100 : 0,
+    avgNet: trades > 0 ? totalNet / trades : 0,
+    totalNet,
+    maxDrawdown,
+  };
 }
 
 export function analyzeMstrScalp(
@@ -302,7 +504,8 @@ export function analyzeMstrScalp(
   window: ScalpWindow,
   interval: ChartInterval,
   mstrSource: string,
-  btcSource: string
+  btcSource: string,
+  opts?: { skipBacktest?: boolean }
 ): MstrScalpReport {
   const { bars } = windowConfig(window);
   const mstrSlice = mstrCandles.slice(-bars);
@@ -324,25 +527,29 @@ export function analyzeMstrScalp(
 
   const targetMove = computeTargetMove(mstrSlice, width, atr);
   const levels = buildLevels(support, resistance, targetMove);
-
   const { inRangePct } = inRangeStats(mstrSlice, support, resistance);
+  const session = getMstrSession();
+  const sessHint = sessionHint(session);
+
   let suitable = false;
   let suitableReason = '';
   if (inRangePct >= 65 && width >= targetMove * 1.5) {
     suitable = true;
-    suitableReason = `${inRangePct.toFixed(0)}% 在区间内，宽 $${width.toFixed(2)}，建议每趟 ≥$${targetMove.toFixed(2)}`;
+    suitableReason = `${inRangePct.toFixed(0)}% 在区间内，宽 $${width.toFixed(2)}`;
   } else if (width < targetMove * 1.2) {
     suitable = false;
-    suitableReason = `区间 $${width.toFixed(2)} 偏窄，难做出 ≥$${MIN_PROFIT} 空间`;
+    suitableReason = `区间 $${width.toFixed(2)} 偏窄`;
   } else if (inRangePct < 50) {
     suitable = false;
     suitableReason = `仅 ${inRangePct.toFixed(0)}% 在区间内，偏趋势`;
   } else {
     suitable = true;
-    suitableReason = `震荡尚可，目标价差约 $${targetMove.toFixed(2)}`;
+    suitableReason = `震荡尚可，tgt $${targetMove.toFixed(2)}`;
   }
 
   const action = deriveAction(mstrPrice, support, resistance, positionPct, targetMove, levels);
+  const roundTripUsd = roundTripCostUsd(mstrPrice);
+  const netExpectedMove = roundPrice(Math.max(0, action.expectedMove - roundTripUsd));
 
   const btcLows = btcSlice.map((c) => c.low);
   const btcHighs = btcSlice.map((c) => c.high);
@@ -359,14 +566,14 @@ export function analyzeMstrScalp(
   const btcPos = btcWidth > 0 ? (btcPrice - btcSupport) / btcWidth : 0.5;
   const posDiff = Math.abs(mstrPos - btcPos);
 
-  let alignment: 'aligned' | 'diverged' | 'neutral' = 'neutral';
+  let alignment: MstrScalpReport['btc']['alignment'] = 'neutral';
   let btcHint = '';
   if (posDiff <= 0.2) {
     alignment = 'aligned';
-    btcHint = 'BTC 与 MSTR 位置同步';
+    btcHint = 'BTC 与 MSTR 同步';
   } else if (posDiff >= 0.4) {
     alignment = 'diverged';
-    btcHint = 'BTC/MSTR 背离，映射仅供参考';
+    btcHint = 'BTC/MSTR 背离';
   } else {
     btcHint = 'BTC 联动中性';
   }
@@ -375,22 +582,37 @@ export function analyzeMstrScalp(
   const mapDiffResistance = Math.abs(mappedResistance - resistance);
   if (mapDiffSupport > 1.5 || mapDiffResistance > 1.5) {
     alignment = alignment === 'aligned' ? 'neutral' : 'diverged';
-    btcHint += '；映射与 K 线区间偏差大';
+    btcHint += '；映射偏差大';
   }
 
-  const score = computeScore(inRangePct, width, targetMove, suitable, alignment);
-  const scoreHint =
-    score >= 75
-      ? `适合震荡，建议每趟 $${targetMove.toFixed(2)} 左右`
-      : score >= 55
-        ? '可操作，注意止损'
-        : '环境一般，观望为主';
+  const gate = evaluateGate({
+    session,
+    suitable,
+    suitableReason,
+    inRangePct,
+    width,
+    targetMove,
+    actionSide: action.side,
+    netExpectedMove,
+    alignment,
+    positionPct,
+  });
+
+  const score = computeScore(inRangePct, width, targetMove, suitable, alignment, session, gate.tradeable);
+  const scoreHint = gate.tradeable
+    ? `可执行，扣费后约 +$${netExpectedMove.toFixed(2)}`
+    : gate.reason;
+
+  const backtest =
+    opts?.skipBacktest || mstrCandles.length < bars * 3
+      ? null
+      : backtestScalp(mstrCandles, btcCandles, window);
 
   const notes = [
     suitableReason,
-    `近 ${window} · ${interval} · ${mstrSlice.length} 根`,
-    `ATR $${atr.toFixed(2)} · 目标价差 $${targetMove.toFixed(2)}`,
-    `BTC Beta(短)=${beta.toFixed(2)}`,
+    `ses ${session} · ${window} ${interval}`,
+    `fee ~$${roundTripUsd.toFixed(2)} · net +$${netExpectedMove.toFixed(2)}`,
+    gate.tradeable ? 'go y' : `go n · ${gate.reason}`,
     '仅供参考',
   ];
 
@@ -401,6 +623,8 @@ export function analyzeMstrScalp(
     btcSource,
     mstrPrice: roundPrice(mstrPrice),
     targetMove,
+    session,
+    sessionHint: sessHint,
     range: {
       support,
       resistance,
@@ -414,6 +638,11 @@ export function analyzeMstrScalp(
     },
     levels,
     action,
+    fees: {
+      roundTripUsd: roundPrice(roundTripUsd),
+      netExpectedMove,
+    },
+    gate,
     btc: {
       price: btcPrice,
       support: btcSupport,
@@ -426,6 +655,7 @@ export function analyzeMstrScalp(
     },
     score,
     scoreHint,
+    backtest,
     notes,
     refreshedAt: Date.now(),
   };
@@ -433,7 +663,7 @@ export function analyzeMstrScalp(
 
 export async function fetchMstrScalpReport(window: ScalpWindow = '1h'): Promise<MstrScalpReport> {
   const { interval, bars } = windowConfig(window);
-  const limit = Math.min(Math.max(bars + 20, 80), 200);
+  const limit = Math.min(Math.max(bars * 8, 480), 1500);
   const [mstrSeries, btcSeries] = await Promise.all([
     fetchMstrCandles(interval, limit),
     fetchBtcCandles(interval, limit),
