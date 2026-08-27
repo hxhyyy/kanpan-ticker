@@ -36,6 +36,7 @@
   function stopLabel(s) {
     if (s === 'stopLoss') return '触发止损';
     if (s === 'takeProfit') return '触发止盈';
+    if (s === 'liquidated') return '已强平';
     return '未触发';
   }
 
@@ -103,6 +104,11 @@
         `成交 ${b.tradeCount}次  净利 ${b.netProfitUsdt >= 0 ? '+' : ''}${fmt(b.netProfitUsdt)}U  收益率 ${b.netRoiPct >= 0 ? '+' : ''}${fmt(b.netRoiPct)}%`,
         `最大回撤 ${fmt(b.maxDrawdownPct)}%  期末 ${fmt(b.finalEquity)}U  止损止盈 ${stopLabel(b.stopped)}`,
       ];
+      if (r.warnings && r.warnings.length) {
+        for (const w of r.warnings) {
+          lines.push(`⚠ ${w}`);
+        }
+      }
       if (r.optimizeMeta) {
         lines.push(`扫参 试了${r.optimizeMeta.tried}组  通过${r.optimizeMeta.passed}组`);
       }
