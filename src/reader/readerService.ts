@@ -20,6 +20,8 @@ export class ReaderService {
   private segmentIndex = 0;
   /** How many sentences the last rendered page actually contained. */
   private lastWindowCount = READER_PAGE_SIZE;
+  /** Flat segment starts of previous pages (for exact back-navigation). */
+  private pageStartStack: number[] = [];
   private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.onDidChangeEmitter.event;
 
@@ -150,6 +152,7 @@ export class ReaderService {
       this.segmentIndex = 0;
     }
 
+    this.pageStartStack = [];
     this.notifyChange();
     await this.saveProgress();
 
@@ -180,32 +183,61 @@ export class ReaderService {
     }
     this.chapterIndex = clamp(chapterIndex, 0, this.book.chapters.length - 1);
     this.segmentIndex = 0;
+    this.pageStartStack = [];
     this.notifyChange();
     await this.saveProgress();
   }
 
   async next(): Promise<void> {
+    this.pageStartStack = [];
     await this.advance(1);
   }
 
   async prev(): Promise<void> {
+    this.pageStartStack = [];
     await this.advance(-1);
   }
 
-  async nextPage(count?: number): Promise<void> {
-    const n = count ?? this.currentPageSize;
-    await this.advance(Math.max(1, n));
+  async nextPage(): Promise<void> {
+    if (!this.book) {
+      return;
+    }
+    const window = this.getReadingWindow();
+    if (window.length === 0) {
+      return;
+    }
+    this.pageStartStack.push(this.flattenIndex());
+    await this.advance(window.length);
   }
 
-  async prevPage(count?: number): Promise<void> {
-    const n = count ?? this.currentPageSize;
-    await this.advance(-Math.max(1, n));
+  async prevPage(): Promise<void> {
+    if (!this.book) {
+      return;
+    }
+
+    const currentStart = this.flattenIndex();
+    if (currentStart <= 0) {
+      vscode.window.setStatusBarMessage('已在全书开头', 2000);
+      return;
+    }
+
+    let prevStart: number;
+    if (this.pageStartStack.length > 0) {
+      prevStart = this.pageStartStack.pop()!;
+    } else {
+      prevStart = this.findPreviousPageStart(currentStart);
+    }
+
+    this.setFlatIndex(Math.max(0, prevStart));
+    this.notifyChange();
+    await this.saveProgress();
   }
 
   async closeBook(): Promise<void> {
     this.book = undefined;
     this.chapterIndex = 0;
     this.segmentIndex = 0;
+    this.pageStartStack = [];
     void vscode.commands.executeCommand('setContext', 'kanpan.readerActive', false);
     await this.context.globalState.update(BOOK_PATH_KEY, undefined);
     await this.context.globalState.update(PROGRESS_KEY, undefined);
@@ -285,6 +317,52 @@ export class ReaderService {
     const last = this.book.chapters.length - 1;
     this.chapterIndex = last;
     this.segmentIndex = Math.max(0, this.book.chapters[last].segments.length - 1);
+  }
+
+  /**
+   * When there is no forward-history, rebuild the previous page by packing
+   * backward with the same char/sentence budget so content matches going forward.
+   */
+  private findPreviousPageStart(
+    endExclusive: number,
+    maxChars = READER_PAGE_CHARS,
+    maxSentences = READER_PAGE_SIZE
+  ): number {
+    if (endExclusive <= 0 || !this.book) {
+      return 0;
+    }
+
+    let chars = 0;
+    let count = 0;
+    let flat = endExclusive - 1;
+    let start = flat;
+
+    while (count < maxSentences && flat >= 0) {
+      const text = this.segmentTextAtFlat(flat);
+      if (count > 0 && chars + text.length > maxChars) {
+        break;
+      }
+      start = flat;
+      chars += text.length;
+      count += 1;
+      flat -= 1;
+    }
+
+    return Math.max(0, start);
+  }
+
+  private segmentTextAtFlat(flat: number): string {
+    if (!this.book || flat < 0) {
+      return '';
+    }
+    let remain = flat;
+    for (const ch of this.book.chapters) {
+      if (remain < ch.segments.length) {
+        return ch.segments[remain] ?? '';
+      }
+      remain -= ch.segments.length;
+    }
+    return '';
   }
 
   private async saveProgress(): Promise<void> {

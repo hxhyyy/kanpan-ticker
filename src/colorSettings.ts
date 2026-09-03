@@ -136,13 +136,21 @@ export function clearStatusBarItemColors(statusBarItem: vscode.StatusBarItem): v
   statusBarItem.backgroundColor = undefined;
 }
 
-/** 底部状态栏文字深浅：10 最暗，100 最亮 */
-export function getStatusBarBrightness(config = kanpanConfig()): number {
-  const raw = config.get<number>('statusBarBrightness', 100);
-  if (!Number.isFinite(raw)) {
-    return 100;
+function clampBrightness(raw: unknown, fallback = 100): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return fallback;
   }
   return Math.max(10, Math.min(100, Math.round(raw)));
+}
+
+/** 底部状态栏文字深浅：10 最暗，100 最亮 */
+export function getStatusBarBrightness(config = kanpanConfig()): number {
+  return clampBrightness(config.get<number>('statusBarBrightness', 100));
+}
+
+/** 小说正文文字深浅：10 最暗，100 最亮 */
+export function getReaderBrightness(config = kanpanConfig()): number {
+  return clampBrightness(config.get<number>('readerBrightness', 100));
 }
 
 function clampByte(n: number): number {
@@ -184,9 +192,14 @@ export function statusBarFadeOutColors(startBrightness: number, steps = 5): stri
   return colors;
 }
 
-export async function selectStatusBarBrightness(): Promise<void> {
+async function selectBrightnessPercent(
+  configKey: 'statusBarBrightness' | 'readerBrightness',
+  title: string,
+  prompt: string
+): Promise<void> {
   const config = kanpanConfig();
-  const current = getStatusBarBrightness(config);
+  const current =
+    configKey === 'readerBrightness' ? getReaderBrightness(config) : getStatusBarBrightness(config);
   const presets = [
     { label: '最亮', brightness: 100, description: '默认，最清晰' },
     { label: '偏亮', brightness: 80, description: '略压一点' },
@@ -204,7 +217,7 @@ export async function selectStatusBarBrightness(): Promise<void> {
       brightness: item.brightness,
     })),
     {
-      title: '看盘插件 - 底部字体深浅',
+      title,
       placeHolder: `当前 ${current}%`,
     }
   );
@@ -215,7 +228,7 @@ export async function selectStatusBarBrightness(): Promise<void> {
   let next = picked.brightness;
   if (next < 0) {
     const input = await vscode.window.showInputBox({
-      prompt: '底部字体深浅（10 最暗，100 最亮）',
+      prompt,
       value: String(current),
       validateInput: (value) => {
         const n = Number(value);
@@ -231,8 +244,24 @@ export async function selectStatusBarBrightness(): Promise<void> {
     next = Math.round(Number(input));
   }
 
-  await config.update('statusBarBrightness', next, vscode.ConfigurationTarget.Global);
-  vscode.window.showInformationMessage(`底部字体深浅已设为 ${next}%`);
+  await config.update(configKey, next, vscode.ConfigurationTarget.Global);
+  vscode.window.showInformationMessage(`${title.replace('看盘插件 - ', '')}已设为 ${next}%`);
+}
+
+export async function selectStatusBarBrightness(): Promise<void> {
+  await selectBrightnessPercent(
+    'statusBarBrightness',
+    '看盘插件 - 底部字体深浅',
+    '底部字体深浅（10 最暗，100 最亮）'
+  );
+}
+
+export async function selectReaderBrightness(): Promise<void> {
+  await selectBrightnessPercent(
+    'readerBrightness',
+    '看盘插件 - 正文字体深浅',
+    '正文字体深浅（10 最暗，100 最亮）'
+  );
 }
 
 export function coloredTrendIcon(up: boolean, color: string): vscode.Uri {

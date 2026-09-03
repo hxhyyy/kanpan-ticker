@@ -9,7 +9,7 @@ body {
   height: 100%;
   width: 100%;
   background: var(--vscode-sideBar-background);
-  color: var(--vscode-foreground);
+  color: var(--reader-fg, var(--vscode-foreground));
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
   -webkit-font-smoothing: antialiased;
@@ -76,6 +76,7 @@ body {
   line-height: 1.55;
   word-break: break-word;
   overflow-wrap: anywhere;
+  color: var(--reader-fg, var(--vscode-foreground));
 }
 
 .reader-prose.muted {

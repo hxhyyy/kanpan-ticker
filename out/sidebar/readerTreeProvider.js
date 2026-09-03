@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReaderTreeProvider = void 0;
 const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
+const colorSettings_1 = require("../colorSettings");
 const treeProviders_1 = require("./treeProviders");
 function readerStealthLabel() {
     const raw = vscode.workspace.getConfiguration('kanpan').get('readerStealthSeconds', 10);
@@ -71,6 +72,12 @@ class ReaderTreeProvider {
                     description: readerStealthLabel(),
                     tooltip: '',
                     command: { command: 'kanpan.setReaderStealthSeconds', title: '设置隐藏倒计时' },
+                }),
+                new treeProviders_1.KanpanTreeItem('reader-brightness', '正文字体深浅', vscode.TreeItemCollapsibleState.None, {
+                    iconId: 'eye',
+                    description: `${(0, colorSettings_1.getReaderBrightness)()}%`,
+                    tooltip: '调整正文文字深浅（10 最暗，100 最亮）',
+                    command: { command: 'kanpan.setReaderBrightness', title: '设置正文字体深浅' },
                 }),
             ];
             if (!book) {

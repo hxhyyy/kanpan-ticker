@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getReaderStealthSeconds, joinProse, selectReaderStealthSeconds } from './readerStealth';
 import { ReaderService } from './readerService';
+import { getReaderBrightness, statusBarNeutralColor } from '../colorSettings';
 
 export { selectReaderStealthSeconds };
 
@@ -21,6 +22,8 @@ export class ReaderWebviewProvider implements vscode.WebviewViewProvider {
   private stealthHidden = false;
   private unlockArrowCount = 0;
   private lastUnlockArrowAt = 0;
+  private hideLeftCount = 0;
+  private lastHideLeftAt = 0;
 
   constructor(
     private readonly reader: ReaderService,
@@ -30,6 +33,7 @@ export class ReaderWebviewProvider implements vscode.WebviewViewProvider {
       if (!reader.currentBook) {
         this.stealthHidden = false;
         this.unlockArrowCount = 0;
+        this.hideLeftCount = 0;
       }
       this.pushUpdate();
     });
@@ -87,6 +91,7 @@ export class ReaderWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   async handleNext(): Promise<void> {
+    this.hideLeftCount = 0;
     if (this.consumeArrowUnlock()) {
       return;
     }
@@ -97,11 +102,32 @@ export class ReaderWebviewProvider implements vscode.WebviewViewProvider {
     if (this.consumeArrowUnlock()) {
       return;
     }
+    if (this.consumeTripleLeftHide()) {
+      return;
+    }
     await this.reader.prevPage();
   }
 
+  private consumeTripleLeftHide(): boolean {
+    if (this.stealthHidden || !this.reader.currentBook) {
+      return false;
+    }
+    const now = Date.now();
+    if (now - this.lastHideLeftAt > 1200) {
+      this.hideLeftCount = 0;
+    }
+    this.lastHideLeftAt = now;
+    this.hideLeftCount += 1;
+    if (this.hideLeftCount >= 3) {
+      this.hideLeftCount = 0;
+      this.hideToStealth();
+      return true;
+    }
+    return false;
+  }
+
   private consumeArrowUnlock(): boolean {
-    if (!this.stealthHidden || getReaderStealthSeconds() <= 0) {
+    if (!this.stealthHidden) {
       return false;
     }
     const now = Date.now();
@@ -117,8 +143,15 @@ export class ReaderWebviewProvider implements vscode.WebviewViewProvider {
     return true;
   }
 
+  private hideToStealth(): void {
+    this.stealthHidden = true;
+    this.unlockArrowCount = 0;
+    void this.view?.webview.postMessage({ type: 'setHidden', hidden: true });
+  }
+
   private revealFromStealth(): void {
     this.stealthHidden = false;
+    this.hideLeftCount = 0;
     void this.view?.webview.postMessage({ type: 'setHidden', hidden: false });
   }
 
@@ -133,7 +166,11 @@ export class ReaderWebviewProvider implements vscode.WebviewViewProvider {
 
     const book = this.reader.currentBook;
     if (!book) {
-      void this.view.webview.postMessage({ type: 'update', mode: 'empty' });
+      void this.view.webview.postMessage({
+        type: 'update',
+        mode: 'empty',
+        textColor: statusBarNeutralColor(getReaderBrightness()),
+      });
       this.view.description = '未打开';
       return;
     }
@@ -150,6 +187,7 @@ export class ReaderWebviewProvider implements vscode.WebviewViewProvider {
       pageSize,
       stealthSeconds: getReaderStealthSeconds(),
       hidden: this.stealthHidden,
+      textColor: statusBarNeutralColor(getReaderBrightness()),
     });
     this.view.description = this.reader.progressLabel;
   }

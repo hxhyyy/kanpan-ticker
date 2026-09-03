@@ -318,6 +318,12 @@ class SettingsTreeProvider {
                 tooltip: '调整状态栏行情文字深浅（10 最暗，100 最亮）\n档位对齐点亮后的淡出梯度',
                 command: { command: 'kanpan.setStatusBarBrightness', title: '设置底部字体深浅' },
             }),
+            new KanpanTreeItem('settings-reader-brightness', '正文字体深浅', vscode.TreeItemCollapsibleState.None, {
+                iconId: 'book',
+                description: `${(0, colorSettings_1.getReaderBrightness)()}%`,
+                tooltip: '调整小说正文文字深浅（10 最暗，100 最亮）',
+                command: { command: 'kanpan.setReaderBrightness', title: '设置正文字体深浅' },
+            }),
         ];
         if (scheme === 'custom') {
             items.push(new KanpanTreeItem('settings-rise-color', '上涨颜色', vscode.TreeItemCollapsibleState.None, {

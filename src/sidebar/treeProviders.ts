@@ -4,6 +4,7 @@ import {
   getColorSchemeLabel,
   getRiseFallColors,
   getStatusBarBrightness,
+  getReaderBrightness,
   shouldUseNeutralColors,
 } from '../colorSettings';
 import { quoteDecorationUri } from '../quoteDecoration';
@@ -356,6 +357,17 @@ export class SettingsTreeProvider implements vscode.TreeDataProvider<KanpanTreeI
           description: `${brightness}%`,
           tooltip: '调整状态栏行情文字深浅（10 最暗，100 最亮）\n档位对齐点亮后的淡出梯度',
           command: { command: 'kanpan.setStatusBarBrightness', title: '设置底部字体深浅' },
+        }
+      ),
+      new KanpanTreeItem(
+        'settings-reader-brightness',
+        '正文字体深浅',
+        vscode.TreeItemCollapsibleState.None,
+        {
+          iconId: 'book',
+          description: `${getReaderBrightness()}%`,
+          tooltip: '调整小说正文文字深浅（10 最暗，100 最亮）',
+          command: { command: 'kanpan.setReaderBrightness', title: '设置正文字体深浅' },
         }
       ),
     ];

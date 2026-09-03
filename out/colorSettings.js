@@ -42,10 +42,12 @@ exports.toStatusBarReadableColor = toStatusBarReadableColor;
 exports.applyStatusBarItemColors = applyStatusBarItemColors;
 exports.clearStatusBarItemColors = clearStatusBarItemColors;
 exports.getStatusBarBrightness = getStatusBarBrightness;
+exports.getReaderBrightness = getReaderBrightness;
 exports.applyBrightnessToHex = applyBrightnessToHex;
 exports.statusBarNeutralColor = statusBarNeutralColor;
 exports.statusBarFadeOutColors = statusBarFadeOutColors;
 exports.selectStatusBarBrightness = selectStatusBarBrightness;
+exports.selectReaderBrightness = selectReaderBrightness;
 exports.coloredTrendIcon = coloredTrendIcon;
 exports.syncKanpanThemeColors = syncKanpanThemeColors;
 exports.initKanpanThemeColors = initKanpanThemeColors;
@@ -156,13 +158,19 @@ function clearStatusBarItemColors(statusBarItem) {
     statusBarItem.color = undefined;
     statusBarItem.backgroundColor = undefined;
 }
-/** 底部状态栏文字深浅：10 最暗，100 最亮 */
-function getStatusBarBrightness(config = kanpanConfig()) {
-    const raw = config.get('statusBarBrightness', 100);
-    if (!Number.isFinite(raw)) {
-        return 100;
+function clampBrightness(raw, fallback = 100) {
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+        return fallback;
     }
     return Math.max(10, Math.min(100, Math.round(raw)));
+}
+/** 底部状态栏文字深浅：10 最暗，100 最亮 */
+function getStatusBarBrightness(config = kanpanConfig()) {
+    return clampBrightness(config.get('statusBarBrightness', 100));
+}
+/** 小说正文文字深浅：10 最暗，100 最亮 */
+function getReaderBrightness(config = kanpanConfig()) {
+    return clampBrightness(config.get('readerBrightness', 100));
 }
 function clampByte(n) {
     return Math.max(0, Math.min(255, Math.round(n)));
@@ -198,9 +206,9 @@ function statusBarFadeOutColors(startBrightness, steps = 5) {
     }
     return colors;
 }
-async function selectStatusBarBrightness() {
+async function selectBrightnessPercent(configKey, title, prompt) {
     const config = kanpanConfig();
-    const current = getStatusBarBrightness(config);
+    const current = configKey === 'readerBrightness' ? getReaderBrightness(config) : getStatusBarBrightness(config);
     const presets = [
         { label: '最亮', brightness: 100, description: '默认，最清晰' },
         { label: '偏亮', brightness: 80, description: '略压一点' },
@@ -215,7 +223,7 @@ async function selectStatusBarBrightness() {
         detail: item.description,
         brightness: item.brightness,
     })), {
-        title: '看盘插件 - 底部字体深浅',
+        title,
         placeHolder: `当前 ${current}%`,
     });
     if (!picked) {
@@ -224,7 +232,7 @@ async function selectStatusBarBrightness() {
     let next = picked.brightness;
     if (next < 0) {
         const input = await vscode.window.showInputBox({
-            prompt: '底部字体深浅（10 最暗，100 最亮）',
+            prompt,
             value: String(current),
             validateInput: (value) => {
                 const n = Number(value);
@@ -239,8 +247,14 @@ async function selectStatusBarBrightness() {
         }
         next = Math.round(Number(input));
     }
-    await config.update('statusBarBrightness', next, vscode.ConfigurationTarget.Global);
-    vscode.window.showInformationMessage(`底部字体深浅已设为 ${next}%`);
+    await config.update(configKey, next, vscode.ConfigurationTarget.Global);
+    vscode.window.showInformationMessage(`${title.replace('看盘插件 - ', '')}已设为 ${next}%`);
+}
+async function selectStatusBarBrightness() {
+    await selectBrightnessPercent('statusBarBrightness', '看盘插件 - 底部字体深浅', '底部字体深浅（10 最暗，100 最亮）');
+}
+async function selectReaderBrightness() {
+    await selectBrightnessPercent('readerBrightness', '看盘插件 - 正文字体深浅', '正文字体深浅（10 最暗，100 最亮）');
 }
 function coloredTrendIcon(up, color) {
     const path = up ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6';

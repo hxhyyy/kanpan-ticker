@@ -43,6 +43,10 @@ const providers_1 = require("./providers");
 const quoteDecoration_1 = require("./quoteDecoration");
 const readerService_1 = require("./reader/readerService");
 const readerWebview_1 = require("./reader/readerWebview");
+const mstrScalpService_1 = require("./mstr/mstrScalpService");
+const mstrScalpWebview_1 = require("./mstr/mstrScalpWebview");
+const gridSimService_1 = require("./grid/gridSimService");
+const gridSimWebview_1 = require("./grid/gridSimWebview");
 const reorder_1 = require("./sidebar/reorder");
 const readerTreeProvider_1 = require("./sidebar/readerTreeProvider");
 const treeProviders_1 = require("./sidebar/treeProviders");
@@ -74,6 +78,10 @@ async function activate(context) {
     const cryptoProvider = new treeProviders_1.CryptoTreeProvider(store);
     const readerProvider = new readerTreeProvider_1.ReaderTreeProvider(readerService);
     const readerWebview = new readerWebview_1.ReaderWebviewProvider(readerService, context.extensionUri);
+    const mstrScalpService = new mstrScalpService_1.MstrScalpService();
+    const mstrScalpWebview = new mstrScalpWebview_1.MstrScalpWebviewProvider(mstrScalpService, context.extensionUri);
+    const gridSimService = new gridSimService_1.GridSimService(context);
+    const gridSimWebview = new gridSimWebview_1.GridSimWebviewProvider(gridSimService, context.extensionUri);
     const settingsProvider = new treeProviders_1.SettingsTreeProvider();
     const refreshStockView = () => stockProvider.refresh();
     const refreshCryptoView = () => cryptoProvider.refresh();
@@ -88,10 +96,14 @@ async function activate(context) {
     const readerView = vscode.window.createTreeView('kanpanView.reader', {
         treeDataProvider: readerProvider,
     });
-    context.subscriptions.push(quoteDecoration, stockView, cryptoView, readerView, readerService, vscode.window.registerWebviewViewProvider(readerWebview_1.ReaderWebviewProvider.viewType, readerWebview), vscode.window.registerFileDecorationProvider(quoteDecoration), store.onUpdate(() => quoteDecoration.refresh()), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
+    context.subscriptions.push(quoteDecoration, stockView, cryptoView, readerView, readerService, vscode.window.registerWebviewViewProvider(readerWebview_1.ReaderWebviewProvider.viewType, readerWebview), vscode.window.registerWebviewViewProvider(mstrScalpWebview_1.MstrScalpWebviewProvider.viewType, mstrScalpWebview), vscode.window.registerWebviewViewProvider(gridSimWebview_1.GridSimWebviewProvider.viewType, gridSimWebview), mstrScalpService, mstrScalpWebview, gridSimService, gridSimWebview, vscode.window.registerFileDecorationProvider(quoteDecoration), store.onUpdate(() => quoteDecoration.refresh()), vscode.window.registerTreeDataProvider('kanpanView.settings', settingsProvider), vscode.commands.registerCommand('kanpan.refresh', async () => {
         await marketService.refresh();
         stockProvider.refresh();
         cryptoProvider.refresh();
+    }), vscode.commands.registerCommand('kanpan.mstrScalpRefresh', async () => {
+        await mstrScalpService.refresh();
+    }), vscode.commands.registerCommand('kanpan.gridSimRun', async () => {
+        await gridSimWebview.requestRunFromForm();
     }), vscode.commands.registerCommand('kanpan.show', () => marketService.setStatusVisible(true)), vscode.commands.registerCommand('kanpan.hide', () => marketService.setStatusVisible(false)), vscode.commands.registerCommand('kanpan.peekStatusBar', () => marketService.peekStatusBar()), vscode.commands.registerCommand('kanpan.toggleStatusBarDisplayMode', () => marketService.toggleStatusBarDisplayMode()), vscode.commands.registerCommand('kanpan.togglePriceAlertsMute', () => marketService.togglePriceAlertsMute()), vscode.commands.registerCommand('kanpan.addStock', () => marketService.addStock()), vscode.commands.registerCommand('kanpan.addAShare', async () => {
         await marketService.addAShare();
         stockProvider.refresh();
@@ -202,6 +214,10 @@ async function activate(context) {
     }), vscode.commands.registerCommand('kanpan.readerNext', () => readerWebview.handleNext()), vscode.commands.registerCommand('kanpan.readerPrev', () => readerWebview.handlePrev()), vscode.commands.registerCommand('kanpan.readerContentTap', () => readerWebview.handleNext()), vscode.commands.registerCommand('kanpan.readerClose', () => readerService.closeBook()), vscode.commands.registerCommand('kanpan.setReaderStealthSeconds', async () => {
         await (0, readerWebview_1.selectReaderStealthSeconds)();
         readerProvider.refresh();
+    }), vscode.commands.registerCommand('kanpan.setReaderBrightness', async () => {
+        await (0, colorSettings_1.selectReaderBrightness)();
+        readerProvider.refresh();
+        readerWebview.refresh();
     }), vscode.commands.registerCommand('kanpan.readerJumpChapter', async (item) => {
         const nodeId = item?.nodeId;
         if (!nodeId?.startsWith('reader-chapter:')) {
@@ -248,8 +264,13 @@ async function activate(context) {
             cryptoProvider.refresh();
             settingsProvider.refresh();
             readerProvider.refresh();
-            if (event.affectsConfiguration('kanpan.readerStealthSeconds')) {
+            if (event.affectsConfiguration('kanpan.readerStealthSeconds') ||
+                event.affectsConfiguration('kanpan.readerBrightness')) {
                 readerWebview.refresh();
+            }
+            if (event.affectsConfiguration('kanpan.mstrScalpRefreshInterval') ||
+                event.affectsConfiguration('kanpan.mstrScalpPriceInterval')) {
+                mstrScalpService.start();
             }
             quoteDecoration.refresh();
         }

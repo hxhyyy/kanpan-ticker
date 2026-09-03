@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { initKanpanThemeColors, selectColorScheme, selectStatusBarBrightness, setCustomColor } from './colorSettings';
+import { initKanpanThemeColors, selectColorScheme, selectReaderBrightness, selectStatusBarBrightness, setCustomColor } from './colorSettings';
 import { MarketService, MarketStore } from './marketService';
 import {
   BinancePairsSnapshot,
@@ -256,6 +256,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await selectReaderStealthSeconds();
       readerProvider.refresh();
     }),
+    vscode.commands.registerCommand('kanpan.setReaderBrightness', async () => {
+      await selectReaderBrightness();
+      readerProvider.refresh();
+      readerWebview.refresh();
+    }),
     vscode.commands.registerCommand(
       'kanpan.readerJumpChapter',
       async (item?: { nodeId?: string }) => {
@@ -311,7 +316,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         cryptoProvider.refresh();
         settingsProvider.refresh();
         readerProvider.refresh();
-        if (event.affectsConfiguration('kanpan.readerStealthSeconds')) {
+        if (
+          event.affectsConfiguration('kanpan.readerStealthSeconds') ||
+          event.affectsConfiguration('kanpan.readerBrightness')
+        ) {
           readerWebview.refresh();
         }
         if (

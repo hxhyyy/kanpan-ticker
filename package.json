@@ -282,6 +282,11 @@
       {
         "command": "kanpan.setReaderStealthSeconds",
         "title": "看盘插件: 正文隐藏倒计时"
+      },
+      {
+        "command": "kanpan.setReaderBrightness",
+        "title": "看盘插件: 正文字体深浅",
+        "icon": "$(eye)"
       }
     ],
     "keybindings": [
@@ -671,7 +676,14 @@
           "default": 10,
           "minimum": 0,
           "maximum": 600,
-          "description": "正文无操作多少秒后自动隐藏（0 表示关闭；隐藏后连续点击 3 次恢复）"
+          "description": "正文无操作多少秒后自动隐藏（0 表示关闭；隐藏后连续点击 3 次或连按 2 次方向键恢复。阅读时连按 3 次左方向键也可立刻隐藏）"
+        },
+        "kanpan.readerBrightness": {
+          "type": "number",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 100,
+          "description": "小说正文字体深浅（10 最暗，100 最亮）。档位与底部行情字体深浅相同"
         },
         "kanpan.mstrScalpPriceInterval": {
           "type": "number",

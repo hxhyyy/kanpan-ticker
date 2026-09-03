@@ -88,13 +88,19 @@
       '</div>';
   }
 
+  function applyTextColor(color) {
+    if (!color) return;
+    document.documentElement.style.setProperty('--reader-fg', color);
+  }
+
   function handleUpdate(msg) {
     if (idleTimer) {
       clearTimeout(idleTimer);
       idleTimer = null;
     }
     idleMs = (msg.stealthSeconds || 0) * 1000;
-    stealthEnabled = idleMs > 0;
+    stealthEnabled = idleMs > 0 || !!msg.hidden;
+    applyTextColor(msg.textColor);
 
     if (msg.mode === 'empty') {
       hidden = false;
@@ -102,7 +108,7 @@
       return;
     }
 
-    hidden = stealthEnabled && !!msg.hidden;
+    hidden = !!msg.hidden;
     renderReading(msg);
     applyStealth(false);
     if (!hidden) resetIdleTimer();
@@ -113,7 +119,8 @@
     if (msg.type === 'update') {
       handleUpdate(msg);
     } else if (msg.type === 'setHidden') {
-      hidden = stealthEnabled && !!msg.hidden;
+      hidden = !!msg.hidden;
+      if (hidden) stealthEnabled = true;
       applyStealth(false);
       if (!hidden) resetIdleTimer();
     }

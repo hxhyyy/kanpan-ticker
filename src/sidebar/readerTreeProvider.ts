@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { getReaderBrightness } from '../colorSettings';
 import { ReaderService } from '../reader/readerService';
 import { KanpanTreeItem } from './treeProviders';
 
@@ -46,6 +47,17 @@ export class ReaderTreeProvider implements vscode.TreeDataProvider<KanpanTreeIte
             description: readerStealthLabel(),
             tooltip: '',
             command: { command: 'kanpan.setReaderStealthSeconds', title: '设置隐藏倒计时' },
+          }
+        ),
+        new KanpanTreeItem(
+          'reader-brightness',
+          '正文字体深浅',
+          vscode.TreeItemCollapsibleState.None,
+          {
+            iconId: 'eye',
+            description: `${getReaderBrightness()}%`,
+            tooltip: '调整正文文字深浅（10 最暗，100 最亮）',
+            command: { command: 'kanpan.setReaderBrightness', title: '设置正文字体深浅' },
           }
         ),
       ];

@@ -48,6 +48,8 @@ class ReaderService {
         this.segmentIndex = 0;
         /** How many sentences the last rendered page actually contained. */
         this.lastWindowCount = exports.READER_PAGE_SIZE;
+        /** Flat segment starts of previous pages (for exact back-navigation). */
+        this.pageStartStack = [];
         this.onDidChangeEmitter = new vscode.EventEmitter();
         this.onDidChange = this.onDidChangeEmitter.event;
     }
@@ -158,6 +160,7 @@ class ReaderService {
             this.chapterIndex = 0;
             this.segmentIndex = 0;
         }
+        this.pageStartStack = [];
         this.notifyChange();
         await this.saveProgress();
         if (!options?.silent) {
@@ -183,27 +186,54 @@ class ReaderService {
         }
         this.chapterIndex = clamp(chapterIndex, 0, this.book.chapters.length - 1);
         this.segmentIndex = 0;
+        this.pageStartStack = [];
         this.notifyChange();
         await this.saveProgress();
     }
     async next() {
+        this.pageStartStack = [];
         await this.advance(1);
     }
     async prev() {
+        this.pageStartStack = [];
         await this.advance(-1);
     }
-    async nextPage(count) {
-        const n = count ?? this.currentPageSize;
-        await this.advance(Math.max(1, n));
+    async nextPage() {
+        if (!this.book) {
+            return;
+        }
+        const window = this.getReadingWindow();
+        if (window.length === 0) {
+            return;
+        }
+        this.pageStartStack.push(this.flattenIndex());
+        await this.advance(window.length);
     }
-    async prevPage(count) {
-        const n = count ?? this.currentPageSize;
-        await this.advance(-Math.max(1, n));
+    async prevPage() {
+        if (!this.book) {
+            return;
+        }
+        const currentStart = this.flattenIndex();
+        if (currentStart <= 0) {
+            vscode.window.setStatusBarMessage('已在全书开头', 2000);
+            return;
+        }
+        let prevStart;
+        if (this.pageStartStack.length > 0) {
+            prevStart = this.pageStartStack.pop();
+        }
+        else {
+            prevStart = this.findPreviousPageStart(currentStart);
+        }
+        this.setFlatIndex(Math.max(0, prevStart));
+        this.notifyChange();
+        await this.saveProgress();
     }
     async closeBook() {
         this.book = undefined;
         this.chapterIndex = 0;
         this.segmentIndex = 0;
+        this.pageStartStack = [];
         void vscode.commands.executeCommand('setContext', 'kanpan.readerActive', false);
         await this.context.globalState.update(BOOK_PATH_KEY, undefined);
         await this.context.globalState.update(PROGRESS_KEY, undefined);
@@ -275,6 +305,43 @@ class ReaderService {
         const last = this.book.chapters.length - 1;
         this.chapterIndex = last;
         this.segmentIndex = Math.max(0, this.book.chapters[last].segments.length - 1);
+    }
+    /**
+     * When there is no forward-history, rebuild the previous page by packing
+     * backward with the same char/sentence budget so content matches going forward.
+     */
+    findPreviousPageStart(endExclusive, maxChars = exports.READER_PAGE_CHARS, maxSentences = exports.READER_PAGE_SIZE) {
+        if (endExclusive <= 0 || !this.book) {
+            return 0;
+        }
+        let chars = 0;
+        let count = 0;
+        let flat = endExclusive - 1;
+        let start = flat;
+        while (count < maxSentences && flat >= 0) {
+            const text = this.segmentTextAtFlat(flat);
+            if (count > 0 && chars + text.length > maxChars) {
+                break;
+            }
+            start = flat;
+            chars += text.length;
+            count += 1;
+            flat -= 1;
+        }
+        return Math.max(0, start);
+    }
+    segmentTextAtFlat(flat) {
+        if (!this.book || flat < 0) {
+            return '';
+        }
+        let remain = flat;
+        for (const ch of this.book.chapters) {
+            if (remain < ch.segments.length) {
+                return ch.segments[remain] ?? '';
+            }
+            remain -= ch.segments.length;
+        }
+        return '';
     }
     async saveProgress() {
         if (!this.book) {

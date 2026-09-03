@@ -37,6 +37,7 @@ exports.ReaderWebviewProvider = exports.selectReaderStealthSeconds = void 0;
 const vscode = __importStar(require("vscode"));
 const readerStealth_1 = require("./readerStealth");
 Object.defineProperty(exports, "selectReaderStealthSeconds", { enumerable: true, get: function () { return readerStealth_1.selectReaderStealthSeconds; } });
+const colorSettings_1 = require("../colorSettings");
 function getNonce() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let out = '';
@@ -53,10 +54,13 @@ class ReaderWebviewProvider {
         this.stealthHidden = false;
         this.unlockArrowCount = 0;
         this.lastUnlockArrowAt = 0;
+        this.hideLeftCount = 0;
+        this.lastHideLeftAt = 0;
         reader.onDidChange(() => {
             if (!reader.currentBook) {
                 this.stealthHidden = false;
                 this.unlockArrowCount = 0;
+                this.hideLeftCount = 0;
             }
             this.pushUpdate();
         });
@@ -111,6 +115,7 @@ class ReaderWebviewProvider {
         }
     }
     async handleNext() {
+        this.hideLeftCount = 0;
         if (this.consumeArrowUnlock()) {
             return;
         }
@@ -120,10 +125,30 @@ class ReaderWebviewProvider {
         if (this.consumeArrowUnlock()) {
             return;
         }
+        if (this.consumeTripleLeftHide()) {
+            return;
+        }
         await this.reader.prevPage();
     }
+    consumeTripleLeftHide() {
+        if (this.stealthHidden || !this.reader.currentBook) {
+            return false;
+        }
+        const now = Date.now();
+        if (now - this.lastHideLeftAt > 1200) {
+            this.hideLeftCount = 0;
+        }
+        this.lastHideLeftAt = now;
+        this.hideLeftCount += 1;
+        if (this.hideLeftCount >= 3) {
+            this.hideLeftCount = 0;
+            this.hideToStealth();
+            return true;
+        }
+        return false;
+    }
     consumeArrowUnlock() {
-        if (!this.stealthHidden || (0, readerStealth_1.getReaderStealthSeconds)() <= 0) {
+        if (!this.stealthHidden) {
             return false;
         }
         const now = Date.now();
@@ -138,8 +163,14 @@ class ReaderWebviewProvider {
         }
         return true;
     }
+    hideToStealth() {
+        this.stealthHidden = true;
+        this.unlockArrowCount = 0;
+        void this.view?.webview.postMessage({ type: 'setHidden', hidden: true });
+    }
     revealFromStealth() {
         this.stealthHidden = false;
+        this.hideLeftCount = 0;
         void this.view?.webview.postMessage({ type: 'setHidden', hidden: false });
     }
     refresh() {
@@ -151,7 +182,11 @@ class ReaderWebviewProvider {
         }
         const book = this.reader.currentBook;
         if (!book) {
-            void this.view.webview.postMessage({ type: 'update', mode: 'empty' });
+            void this.view.webview.postMessage({
+                type: 'update',
+                mode: 'empty',
+                textColor: (0, colorSettings_1.statusBarNeutralColor)((0, colorSettings_1.getReaderBrightness)()),
+            });
             this.view.description = '未打开';
             return;
         }
@@ -167,6 +202,7 @@ class ReaderWebviewProvider {
             pageSize,
             stealthSeconds: (0, readerStealth_1.getReaderStealthSeconds)(),
             hidden: this.stealthHidden,
+            textColor: (0, colorSettings_1.statusBarNeutralColor)((0, colorSettings_1.getReaderBrightness)()),
         });
         this.view.description = this.reader.progressLabel;
     }
